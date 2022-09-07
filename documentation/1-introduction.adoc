@@ -52,3 +52,9 @@ In other words Quarkus is a Java application server, that implements its own ver
 Unlike traditional Java application servers, Quarkus is lightweight, it has a small consumptional fingerprint on the system, and it starts up runs blazingly fast.
 These features allow for more scalable applications, less powerful hardware and serverless applications to be created and used.
 As a result development becomes easier, deployment becomes faster and costs become lower.
+
+== What is this course about?
+
+This course will walk you through the basics of Java/Jakarta EE using the Quarkus development framework.
+We will wall you through the most modern and up to date specs of Jakarta EE and how to develop your applications with Quarkus.
+At the end, you should have the common knowledge to write your own applications or be able to understand other applications and get involved with your team project easily.
