@@ -1,0 +1,17 @@
+image: ruby:2.7
+
+cache:
+  paths:
+    - /usr/local/bundle/gems
+
+pdf:
+  before_script:
+    - gem install asciidoctor-pdf --pre
+    - gem install rouge
+    - gem install pygments.rb
+    - gem install coderay
+  script:
+    - asciidoctor-pdf -R docs -D build 'documentation/*.adoc'
+  artifacts:
+    paths:
+      - build/*.pdf

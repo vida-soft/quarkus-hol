@@ -1,0 +1,54 @@
+= Introduction to JavaEE, JakartaEE and Quarkus
+
+== What is Java EE?
+
+Java EE is a collection of specifications for developing and deploying enterprise applications.
+In general, enterprise applications refer to software hosted on servers that provide the applications that support the enterprise.
+The specifications (defined by Sun) describe services, application programming interfaces (APIs), and protocols.
+
+The 13 core technologies that make up Java EE are:
+
+. JDBC (Java Database Connectivity)
+. JNDI (Java Naming and Directory Interface)
+. EJBs (Enterprise Java Beans)
+. CDI (Contexts and dependency injection)
+. RMI (Remote Method Invocation)
+. JSP (Java Server Pages)
+. Java servlets
+. XML
+. JMS (Java Messaging Service)
+. Java IDL
+. JTA (Java Transaction AP)
+. JavaMail
+. JAF (Java Activation Framework)
+
+The list of specifications goes on and on, as modern and better APIs become the standard and depending on the project and the development team mostly some of the specs end up being used in the project.
+
+The Java EE product provider is typically an application-server, web-server, or database-system vendor who provides classes that implement the interfaces defined in the specifications. 
+These vendors compete on implementations of the Java EE specifications.
+In theory this would allow for the same code base, with a bit of adjustments to run on different application servers, making the development team independent of the application server's vendor
+It also allows makes a layer of standardization, making it easier for new developers to the team onboard with the project faster.
+
+=== What is Jakarta EE
+
+Jakarta EE was known as Java EE formally.
+In conversation these names use to be interchangeable, but as development and progression of the specifications are now taken on by open-source software organisation, the https://www.eclipse.org/org/foundation/[Eclipse Foundation] and they don't have the legal rights to use the formal Java EE namespaces (`javax`) in their code, the name had to be changed as well to Jakarta.
+Other than the new namespaces (`jakarta`) and the name, all specifications and interfaces are the same.
+
+Due to the well known fragmentation in usage of Java SDKs in different projects, you will meet Java EE imports from either packages `javax` or `java`, depending on the version of the SDKs.
+Other than that, the specifications should work the same and should create no further confusion.
+
+== What is Quarkus?
+
+As mentioned above, _"the Java EE product provider is typically an application-server, web-server, or database-system vendor who provides classes that implement the interfaces defined in the specifications"_.
+For a start Quarkus is one of those vendors.
+Other vendors that provide the same functionality are, for example, Apache Tomcat, Jboss, Payara & etc.
+
+> Traditional Java stacks were engineered for monolithic applications with long startup times and large memory requirements in a world where the cloud, containers, and Kubernetes did not exist. Java frameworks needed to evolve to meet the needs of this new world.
+ +
+Quarkus was created to enable Java developers to create applications for a modern, cloud-native world. Quarkus is a Kubernetes-native Java framework tailored for GraalVM and HotSpot, crafted from best-of-breed Java libraries and standards. The goal is to make Java the leading platform in Kubernetes and serverless environments while offering developers a framework to address a wider range of distributed application architectures. - "What is Quarkus?", https://quarkus.io/about/
+
+In other words Quarkus is a Java application server, that implements its own version of the Java EE spec, and provides the most modern and up-to-date capabilities to help Java and Java EE catch up with the latest technologies and standards.
+Unlike traditional Java application servers, Quarkus is lightweight, it has a small consumptional fingerprint on the system, and it starts up runs blazingly fast.
+These features allow for more scalable applications, less powerful hardware and serverless applications to be created and used.
+As a result development becomes easier, deployment becomes faster and costs become lower.
