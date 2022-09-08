@@ -1,11 +1,11 @@
-= Creating your first application with Quarkus
+== Creating your first application with Quarkus
 
 Now that you know what Java/Jakarta EE and Quarkus is, it is time to create our own Quarkus application.
 This section will give you a quick start, showing you the ways you can create and run your a Quarkus project.
 Next lessons will aim to extend that application, with intent to upgrade your knowledge and understandings.
 At the end you will have a functioning example of all important Java EE specs implemented into this project.
 
-== The https://code.quarkus.io[code.quarkus.io] approach
+=== The https://code.quarkus.io[code.quarkus.io] approach
 
 Starting on a new project?
 It can always get a bit frustrating, having to configure your environment and deal with all the specific configurations and XMLs within your project.
@@ -23,7 +23,7 @@ After that you are welcomed with a list of Quarkus Extensions you are able to ch
 These can be extended, removed, depending on your needs.
 More of that, you'll find in our next lessons.
 
-=== Creating your first project
+==== Creating your first project
 
 For the sake of ease, you can follow the configurations as shown above.
 Then add the following extension to your project:
@@ -45,7 +45,7 @@ Following the instructions, there will be three options:
 
 If you want to go pro, you can try and create your application using the Quarkus CLI or maven.
 
-== Creating your app with Quarkus CLI
+=== Creating your app with Quarkus CLI
 
 Quarkus has provided a convenient command line interface, that allows easy interactions with your project configuration, so you can create, personalize and modify your Quarkus extensions in a jiffy.
 If you feel more experienced with terminals and command lines, this would be a better approach for you to quickly generate your project.
@@ -58,7 +58,7 @@ quarkus create app com.vidasoft:magman \
     --extension=quarkus-resteasy-jsonb
 ----
 
-== Creating your app with Maven
+=== Creating your app with Maven
 
 A more verbose approach to generate your first Quarkus application would be by using Maven.
 To achieve the same result, you can simply execute the following line:
@@ -98,6 +98,6 @@ You should be greeted with the following response:
 Hello RESTEasy
 ----
 
-== Great! What's next?
+=== Great! What's next?
 
 In the next lesson, we will introduce you to Quarkus project structure, what and where everything is located, and how to modify it.

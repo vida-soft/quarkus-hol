@@ -1,6 +1,6 @@
-= Introduction to JavaEE, JakartaEE and Quarkus
+== Introduction to JavaEE, JakartaEE and Quarkus
 
-== What is Java EE?
+=== What is Java EE?
 
 Java EE is a collection of specifications for developing and deploying enterprise applications.
 In general, enterprise applications refer to software hosted on servers that provide the applications that support the enterprise.
@@ -29,7 +29,7 @@ These vendors compete on implementations of the Java EE specifications.
 In theory this would allow for the same code base, with a bit of adjustments to run on different application servers, making the development team independent of the application server's vendor
 It also allows makes a layer of standardization, making it easier for new developers to the team onboard with the project faster.
 
-=== What is Jakarta EE
+==== What is Jakarta EE
 
 Jakarta EE was known as Java EE formally.
 In conversation these names use to be interchangeable, but as development and progression of the specifications are now taken on by open-source software organisation, the https://www.eclipse.org/org/foundation/[Eclipse Foundation] and they don't have the legal rights to use the formal Java EE namespaces (`javax`) in their code, the name had to be changed as well to Jakarta.
@@ -38,7 +38,7 @@ Other than the new namespaces (`jakarta`) and the name, all specifications and i
 Due to the well known fragmentation in usage of Java SDKs in different projects, you will meet Java EE imports from either packages `javax` or `java`, depending on the version of the SDKs.
 Other than that, the specifications should work the same and should create no further confusion.
 
-== What is Quarkus?
+=== What is Quarkus?
 
 As mentioned above, _"the Java EE product provider is typically an application-server, web-server, or database-system vendor who provides classes that implement the interfaces defined in the specifications"_.
 For a start Quarkus is one of those vendors.
@@ -53,7 +53,7 @@ Unlike traditional Java application servers, Quarkus is lightweight, it has a sm
 These features allow for more scalable applications, less powerful hardware and serverless applications to be created and used.
 As a result development becomes easier, deployment becomes faster and costs become lower.
 
-== What is this course about?
+=== What is this course about?
 
 This course will walk you through the basics of Java/Jakarta EE using the Quarkus development framework.
 We will wall you through the most modern and up to date specs of Jakarta EE and how to develop your applications with Quarkus.
