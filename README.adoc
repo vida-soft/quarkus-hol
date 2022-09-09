@@ -1,0 +1,67 @@
+= Developing JavaEE applications with Quarkus
+
+== What is this course about?
+
+https://quarkus.io/[Quarkus] is the most up to date framework to develop server applications using the JavaEE spec.
+Its scalability, compactness and flexibility allows for quicker setup, development process and deployment, unlike any other traditional JavaEE server out there.
+
+Most common problems with servers running JavaEE are:
+
+* Difficulty during setup - it usually takes a lot of time to set the development environment up and running.
+Most application servers require changing some configurations here and there.
+The configuration files have specific formats and structures difficult for the human to read. 
+They are too large and most of the time contain a lot of server-related configurations, you will never have to change.
+This makes for cluttered environment, where it is very easy to mess up the configuration and spend hours trying to find a missing closing bracket or wrongly formatted section,
+just for configuring the database for that particular project.
+
+* Tedious development - every time a change is introduced to the code, redeployment is needed.
+Redeployments take time.
+Hotswaps don't usually work.
+Sometimes it takes seconds, sometime minutes and if there was an ongoing session, you'll have to log in again, without being able to continue from where you last left.
+This can turn into such a hassle and productivity killer.
+
+* Deployment and scalability issues - imagine having to set up all of those configurations to multiple instances.
+Configuring distributed systems is difficult in the first place.
+Yes, having Docker containers and automated provisioning with Terraform scripts makes this simpler, but most times these tools are difficult to configure on their own.
+Having yet another thing to worry about wouldn't make it any easier, would it?
+
+* Footprint - most application servers take a lot of system memory and time to even start running.
+The presence of so many configuration options and those large config files suggests that there is too much stuff that has to be loaded, before the application has even started.
+Stuff you might never need to use and stuff that is taking up your system memory.
+This makes conventional java servers inappropriate for running on small environments or being used as a serverless solution.
+
+These are the most obvious ones.
+You can go on with as many examples you want, but let's see how Quarkust tackles those:
+
+* Difficulty during setup - setting up your project is as easy as it can be.
+When getting started, you can go to https://code.quarkus.io[code.quarkus.io] and build your project template from scratch or use Quarkus CLI, or Maven to choose how to configure your project.
+If you are running an existing project, most of the times all that is needed is to set all the system parameters needed for your project and run the application with a simple command.
+More of that you'll find in the course.
+
+* Tedious development - deploying a Quarkus project is easy and quick.
+Once you have your application running, you would rarely need to restart the server again.
+You could modify the configuration in runtime, or change the code.
+Having those changes reflected is as simple as refreshing the page, similar to a NodeJS application.
+
+* Deployment and scalability issues - Quarkus comes with tools and presets for Dockerization out of the box.
+You can simply configure those as your own taste desires and create images and deployments with the neat CLI the framework has provided.
+When it comes to scaling your application, it's one step out of the way.
+
+* Footprint - applications running under Quarkus take up only the space that is needed to run the components of your project.
+There is nothing extra.
+Only the stuff your application is using.
+Having said that, Quarkus has its own extensions and JavaEE implementations, optimized for quick and minimal environment.
+It also allows for building native executables, which take even smaller portion of the system and run significantly fast.
+Applications can start in less then a second.
+This makes Quarkus applications great for serverless execution.
+Don't believe that? https://quarkus.io/blog/runtime-performance/[Here's some proof].
+
+This course intents to walk you through the specifics of Quarkus, using the JavaEE specification.
+At the end you should be able to have the basic knowledge set to create and maintain Quarkus applications.
+The course does not intent to get you deep into the concepts of JavaEE and the Quarkus framework, so if you need to know more, always feel free to check:
+
+* https://quarkus.io/guides/[The Quarkus documentation]
+* https://jakarta.ee/resources/[JavaEE/JakartaEE documentation]
+* https://microprofile.io/category/documentation/[MicroProfile documentation]
+
+And of course use the good old Google to search for any other topic you have in mind 😊.
