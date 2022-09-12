@@ -1,0 +1,413 @@
+== Building REST endpoints with JAX-RS
+
+The first Jakarta EE specification we are going to look through is JAX-RS.
+JAX-RS is a specification that defines annotations for building restful applications.
+With JAX-RS you are able to easily build your REST endpoints, which are the entry points of your web application.
+
+.The extensions we already have included
+*****************************************
+Going back to our introduction part, we included the RestEasy with JSON-B extension.
+
+*RestEasy* is an API that implements the JAX-RS specification.
+Using the annotations by themselves won't work as Jakarta EE, only provides interfaces that need implementation.
+Each application server provider decides how to implement those specifications, and for Quarkus, RestEasy is the solution.
+
+*JSON-B* is a library used to convert Java objects (POJOs) into JSON objects.
+Used with RestEasy, it allows implicit conversion of request/response bodies from and to JSON, so you don't have to interact with the API directly.
+You will see how this comes in action during this chapter.
+*****************************************
+
+=== Analyzing what we already have
+
+Having all that cleared out, let's see how this will come in handy for our project.
+Let's first look at our hello endpoint and analyze every part of it:
+
+[source,java]
+----
+@Path("/hello") <.>
+public class GreetingResource {
+
+    @GET <.>
+    @Produces(MediaType.TEXT_PLAIN) <.>
+    public String hello() {
+        return "Hello RESTEasy"; <.>
+    }
+}
+----
+<.> `@Path` annotation tells the application server where the endpoint is located.
+This annotation can be used on a class or on a method within that class, which has a specific path/subpath.
+In our example this would be `localhost:8080/hello`.
+<.> `@GET` annotation defines the method of the for the request.
+As you may know the most commonly used REST methods are `GET`, `POST`, `PUT`, `DELETE`.
+Each of those are defining the action you intent to do with the data.
+<.> `@Produces` is responsible to tell the server what type of data is going to be returned.
+This helps the server to choose what value to set to the `Content-Type` header, and how to convert the data, passed through the response.
+The value can be set to a method or a class, if all the methods are returning the same response time within it.
+<.> In JAX-RS you have two ways to return a response.
+If your request's response is simple, you can directly set the return value, which will populate the response's body.
+But if you would like to return different types of responses, then you'll have to use `javax.ws.rs.Response` and create your custom responses.
+More of that, later in the chapter.
+
+WARNING: Using `@Produces` annotation is optional.
+If you forget or intent not to add it, most of the times RestEasy will be able to define the content type automatically.
+Despite that it is recommended to use this annotation, because automatic recognition does not work all the time, and you can never know when and for what reason it will fail.
+
+=== Creating our own endpoints
+
+Now that we know how REST endpoints are working with JAX-RS, let's try and create our own endpoints, and put them into action.
+
+One of the most important parts of a magazine manager is being able to create and modify Articles.
+Let's try and create the foundation of the `ArticleResource` - our entry point for accessing articles.
+
+First off, let's add two new packages to our project.
+Under `src\main\java\com\vidasoft` add the following classes:
+
+- `magman.article.ArticleResource`
+- `magman.article.ArticleDTO`
+
+`ArticleResource` will contain all the endpoints needed for our article.
+`ArticleDTO` is the object we are going to pass through requests and responses.
+
+[source, java]
+----
+@Path("/article")
+public class ArticleResource {
+
+}
+
+public class ArticleDTO {
+
+    private Long id;
+    private String title;
+    private String content;
+    private String publishDate;
+    private String author;
+
+    public Long getId() {
+        return id;
+    }
+
+    public void setId(Long id) {
+        this.id = id;
+    }
+
+    public String getTitle() {
+        return title;
+    }
+
+    public void setTitle(String title) {
+        this.title = title;
+    }
+
+    public String getContent() {
+        return content;
+    }
+
+    public void setContent(String content) {
+        this.content = content;
+    }
+
+    public String getPublishDate() {
+        return publishDate;
+    }
+
+    public void setPublishDate(String publishDate) {
+        this.publishDate = publishDate;
+    }
+
+    public String getAuthor() {
+        return author;
+    }
+
+    public void setAuthor(String author) {
+        this.author = author;
+    }
+}
+----
+
+You may have noticed that your IDE is signalling for error when you defined `@Path` on the `ArticleResource` class.
+This is because there are no endpoints defined for that resource.
+Let's create our first endpoint:
+
+[source,java]
+----
+@Path("/article")
+public class ArticleResource {
+
+    private static Map<Long, ArticleDTO> articles = new HashMap<>(); <.>
+
+    @POST
+    @Consumes(MediaType.APPLICATION_JSON) <.>
+    public Response createArticle(ArticleDTO article) {
+        Long articleId = Math.abs(new Random().nextLong());
+        article.setId(articleId);
+        articles.put(articleId, article);
+        return Response.created(URI.create(String.format("article/%s", article.getId()))).build(); <.>
+    }
+
+}
+----
+<.> We are going to use a Map to store all of our articles.
+<.> The `@Consumes` annotation defines what type of data we are going to pass to the request's body.
+It has similar behavior as `@Produces`.
+If the annotation isn't used RestEasy will use whatever type is defined in the `Accept` header of the request.
+<.> Here we use `javax.ws.rs.Response` to return a custom response to the client `201 CREATED`.
+This response is the most appropriately accepted when creating new entities.
+It is specified to contain a path for `GET` requests regarding that entity.
+
+==== Creating an article
+
+Now that we have our first endpoint created, let's try and create an article.
+
+[source,curl]
+----
+curl -i --location --request POST 'localhost:8080/article' \
+--header 'Content-Type: application/json' \
+--data-raw '{
+    "title": "Ipsum Lorem",
+    "content": "The quick brown fox runs over the lazy dog.",
+    "publishDate": "2022-01-12",
+    "author": "Cave Johnson"
+}'
+----
+
+As a response you should get:
+
+[source,text]
+----
+HTTP/1.1 201 Created
+Location: http://localhost:8080/article/2559794960439759963
+content-length: 0
+----
+
+==== Getting an article
+
+Let's try and cURL the responded location now:
+
+[source,curl]
+----
+curl -i --location --request GET 'http://localhost:8080/article/2559794960439759963'
+----
+
+What we get as a response is:
+
+[source,text]
+----
+HTTP/1.1 404 Not Found
+Content-Type: application/json
+content-length: 0
+----
+
+Why? 
+Because we don't have a GET endpoint for that yet.
+Let's create one, shall we?
+
+[source,java]
+----
+@Path("/article")
+public class ArticleResource {
+
+    public Response createArticle(ArticleDTO article) {...}
+
+    @GET
+    @Path("/{id}") <.>
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getArticle(@PathParam("id") Long articleId) { <.>
+        if (articleId == null) {
+            return Response.status(Response.Status.BAD_REQUEST).build(); <.>
+        } else if(articles.get(articleId) == null) {
+            return Response.status(Response.Status.NOT_FOUND).build(); <.>
+        } else {
+            return Response.ok(articles.get(articleId)).build(); <.>
+        }
+    }
+
+}
+----
+<.> Here we use the `@Path` annotation in combination with `{id}`.
+`{id}` is used as a placeholder to tell RestEasy, that there is a variable going to be placed there, pointing to the article id.
+<.> In order to get the contents of our `{id}` placeholder we use the `@PathParam` annotation, which will tell our application that the value of `{id}` will be passed to the `articleId` variable.
+<.> It is recommended that we do checks of the content we are receiving to avoid any errors or exceptions in our app.
+If the article id is invalid, we should return response `400 BAD REQUEST`.
+<.> Other check we are making is whether this article exists at all. 
+If the article does not exist, we should return response with status `404 NOT FOUND`.
+<.> When all the checks have completed it is safe to get the requested article from our map.
+Here we will return `200 OK` with our article as a response.
+
+Now let's try requesting that article again.
+But keep in mind that you need to create the article again, as our list of articles will reset for its next deployment.
+
+[source,curl]
+----
+curl -i --location --request GET 'http://localhost:8080/article/2559794960439759963'
+----
+
+And our response should be:
+
+[source,text]
+----
+HTTP/1.1 200 OK
+Content-Type: application/json
+content-length: 137
+
+{"author":"Cave Johnson","content":"The quick brown fox runs over the lazy dog.","id":"2559794960439759963","publishDate":"2022-01-12","title":"Ipsum Lorem"}
+----
+
+TIP: Try and create other GET article requests.
+Observe how the application behaves when you pass invalid article id.
+
+==== Editing an article
+
+One other important functionality is to be able to edit articles.
+Let's implement that into our REST demo:
+
+[source,java]
+----
+@Path("/article")
+public class ArticleResource {
+
+    public Response createArticle(ArticleDTO article) {...}
+
+    public Response getArticle(@PathParam("id") Long articleId) {...}
+
+    @PUT
+    @Path("/{id}")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response editArticle(@PathParam("id") Long articleId, ArticleDTO article) {
+        if (articleId == null || !articleId.equals(article.getId())) {
+            return Response.status(Response.Status.BAD_REQUEST).build();
+        } else if (articles.get(articleId) == null) {
+            return Response.status(Response.Status.NOT_FOUND).build();
+        } else {
+            articles.put(articleId, article);
+            return Response.ok(article).build();
+        }
+    }
+
+}
+----
+
+Again it is recommended to do some checks, before performing the operation.
+This will guarantee us, that we are editing the right article and limit the risk of obvious errors.
+
+==== Deleting an article
+
+Creating and editing articles is great! So far so good, but sometimes we want to be able to get rid of them. Let's create a method that deletes an article.
+
+[source,java]
+----
+@Path("/article")
+public class ArticleResource {
+
+    public Response createArticle(ArticleDTO article) {...}
+
+    public Response getArticle(@PathParam("id") Long articleId) {...}
+
+    public Response editArticle(@PathParam("id") Long articleId, ArticleDTO article) {...}
+
+    @DELETE
+    @Path("/{id}")
+    public void deleteArticle(@PathParam("id") Long articleId) {
+        articles.remove(articleId); <.>
+    }
+}
+----
+<.> Here we are not interested whether the article exists or not, as we want to delete it, and we are not interested what the response will be.
+That's the reason why we don't return a custom response here.
+In JAX-RS void methods will automatically return `204 NO CONTENT`.
+
+Let's now execute the cURL:
+
+[source,curl]
+----
+curl -i --location --request DELETE 'http://localhost:8080/article/2559794960439759963'
+----
+
+Did you get `HTTP/1.1 204 No Content`?
+If yes, than your work is finished.
+Now try and perform a GET request to see if that article is still there.
+You should be getting `404` now.
+
+==== Getting a list of articles
+
+We will need to preview a list of our articles.
+Getting them one by one, wouldn't be a good solution.
+Let's create an endpoint to get all articles.
+
+[source,java]
+----
+@Path("/article")
+public class ArticleResource {
+    ...
+    
+    @GET
+    @Produces(MediaType.APPLICATION_JSON)
+    public Collection<ArticleDTO> getArticles() {
+        return articles.values();
+    }
+}
+----
+
+Here you may have noticed two things.
+We are not using the `@Path` annotation on the method, and we are not returning `Response`, but `List<ArticleDTO>` instead.
+As we said earlier, if we do not have any deeper path for the request, the method will take whatever path is defined on class level.
+As for the return value, in this example we have no reason to return a custom response.
+There is nothing to check, nothing to validate, nothing more to add than just the list of articles.
+But don't worry. This is about to change very soon.
+
+Now that you have created the `getArticles` endpoint, let's make some articles and try to call that endpoint.
+
+[source,curl]
+----
+curl -i --location --request GET 'http://localhost:8080/article'
+----
+
+As a response you will see a JSON array with all the articles you have created.
+
+==== Creating a custom request
+
+Currently we are able to create articles, get articles, update articles and delete articles.
+That's great! We have all the crud operations, needed to perform basic actions for our articles.
+But there's one issue with that method getting all the articles.
+When we call it, we are going to get either all articles or no articles, in the case where no articles have been created.
+In a situation where we have 1000 articles, this wouldn't be useful, would it?
+
+Instead of returning all the data to the client, it'd be better to give it some data, and if it asks for more, then we give more.
+This would make our server perform better, leading to better user experience at the end.
+
+Let's touch our `getArticles` method a bit, shall we?
+
+[source,java]
+----
+    @GET
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getArticles(@QueryParam("page") @DefaultValue("1") int page,
+                                @QueryParam("size") @DefaultValue("10") int size) { <.>
+        if (page < 1 || size < 0) {
+            return Response.status(Response.Status.BAD_REQUEST).build();
+        } else {
+            var articles = this.articles.values().stream()
+                    .skip(((page - 1L) * size)) <.>
+                    .limit(size)
+                    .collect(Collectors.toList());
+            return Response.ok(articles).build();
+        }
+    }
+----
+<.> `@QueryParam` tells JAX-RS, that the variable will be taken from the query parameter, named `page`.
+`@DefaultValue` tells JAX-RS to set that value to the argument, if the query parameter has not been passed.
+<.> The formula here is simple.
+Since arrays are zero-based, we subtract 1 from the page number and multiply it by the size, to calculate how many results we want to get from the list.
+For example if the page is `1`, and the size `10` then we will skip 0 entries and take only 10; if the page is 2, we will skip 10 entries and get 10 again, and so on, and so forth.
+
+Now let's create our articles again and try the new query and its parameters:
+
+[source,java]
+----
+curl -i --location --request GET 'http://localhost:8080/article?page=1&size=5'
+----
+
+TIP: Try to create different types of requests and observe what kind of results you get here.
+
+We are going to look though more of the JAX-RS features during our next sessions, while continuing our journey into making the magazine manager.

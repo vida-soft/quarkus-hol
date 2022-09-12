@@ -67,7 +67,6 @@ it is built and optimized according to the standards of the Quarkus application 
 
 *quarkus-resteasy* is the extension, responsible for enabling the JAX-RS functionality inside quarkus.
 It provides all the annotations needed to create REST endpoints for processing requests from the client and giving back responses.
-More of that in a later chapter.
 
 *quarkus-resteasy-jsonb* - this extension is used to quickly serialize/deserialize JSON objects from and to Java objects.
 Most REST applications pass data through JSON, and JsonB is a library suitable to convert those to Java objects (POJOs) implicitly.
@@ -131,12 +130,14 @@ You can view other examples for database configuration https://quarkus.io/guides
 
 === The database model
 
-Now that we have our database configured, let's create our database model, following the diagram below.
+Now that we have our database configured, let's upgrade our project by creating our database model.
+For that purpose, we are going to follow the diagram below.
 
 image::img/db-model.jpg[allign=center]
 
-First off, create a new package `magman.model` under `com.vidasoft`.
-Then, let's build the core classes of the database:
+First off, create a new package, named `model` under `com.vidasoft.magman`.
+This will help us separate our database ORM layer from the rest of the project.
+Then, let's build the core classes for the database:
 
 [source,java]
 ----
@@ -156,10 +157,6 @@ public class Comment {
 public class Advertiser {
     ...
 }
-
-public class Submission {
-    ...
-}
 ----
 
 After that's been done, let's start shaping our model classes...
@@ -169,7 +166,7 @@ After that's been done, let's start shaping our model classes...
 NOTE: Depending on the version of Java you use, the following annotations could be found either in packages `javax.persistence` or `jakarta.persistence`.
 
 Starting off with the User class, the first and most important thing we'll need to set is the annotation `@Entity`.
-This is an annotation, that tells JPA, that this class is used in relation of a database table.
+This is an annotation, telling JPA, that this class is used in relation with a database table.
 
 [source,java]
 ----
@@ -178,7 +175,8 @@ This is an annotation, that tells JPA, that this class is used in relation of a 
 public class User {}
 ----
 <.> Here we are also adding an optional annotation defining the name of the table.
-In most databases the word "user" is reserved to the language, as it refers to the user of the database and not some name of a table.
+
+NOTE: In most databases the word "user" is reserved to the language, as it refers to the user of the database and not some name of a table.
 Therefore you should avoid using the name "user" for a table.
 
 TIP: Sometimes you will have to model your Java objects or tables, based on an already existing database.
@@ -202,27 +200,29 @@ public class User {
 ----
 <1> `Id` annotation tells JPA that this property maps the id column of the table. 
 <2> `GeneratedValue` is an annotation, that tells Hibernate how to handle id generation for new entities.
-In this example `GenerationType.AUTO`, would tell Hibernate or any other ORM implementation to handle Id generation with its default setting.
-The most common approach is they generate a special table, that keeps track of tha last id used and assign the next one to the entity.
+In this example `GenerationType.AUTO`, would tell Hibernate or any other ORM implementation to handle Id generation with its default setting four auto generation.
+The most common approach is generating a special table, that keeps track of the last id used and assign the next one to the entity.
 
 One of the things we also need do decide during database modeling is how do we want the database to behave, when two or more people are trying to access the database.
 Do we want the access to be one user at a time, or do we want all users to have access at any time.
-This decision is usually based on how strict we should be on database integrity, and how crucial is that to the project.
+This decision is usually based on how strict we want to be on database integrity, and how crucial is that to the project.
 The procedure we use to control that access is called locking.
 
 .Optimistic vs pessimistic locking
 *****************************************
 When the access to the database is limited to one user at a time, we use the term *pessimistic locking*.
-This means that when a user performs `SELECT`, `INSERT`, `UPDATE`, `DELETE` & etc. operations, other users are not allowed to access the database, and will have to wait for the operations to finish.
+This means that when a user performs `SELECT`, `INSERT`, `UPDATE`, `DELETE` & etc. operations, other users are not allowed to access the database, and will have to wait for the initial operations to finish.
 This type of locking guarantees that everyone is working with the most recent and up to date data and prevents conflicts, where two users might be editing the same table or column.
 
 The other most commonly used method is called *optimistic locking*.
-This type of locking relies that every table row has a specific column, that will tell which is the most recent version of the data.
-That way if two users edit the same data, the first one who's going to save it, prevents the other one from overwriting it, by version comparison.
-When the database has been modified, Hibernate will check the version of the persisted entity and the version of the entity wanting to be persisted and if the new entity has a version lower than the version in the database, it won't be persisted.
+This type of locking relies that every table row has a specific column, that will keep track on the data's recency by versioning.
+That way if two users edit the same data, the first one who's going to save it, prevents the others from overwriting it, by version comparison.
+When the database has been modified, Hibernate will check the version of the persisted entity compare it against the version of the next modification wanting to be persisted.
+If the new entity has a version lower than the version in the database, it won't be persisted and the transaction will be rolled back, meaning all changes, no matter their relation to that entity will be dismissed.
 *****************************************
 
 For our project we are going to use *optimistic locking*.
+It is the most commonly used type of locking as it is sufficient enough to keep the data's integrity intact.
 
 [source,java]
 ----
@@ -234,11 +234,11 @@ public class User {
 ----
 <.> With the `Version` annotation we tell our ORM that this is the field to compare when modifying data, to check whether we are working on an old invalid data or new one.
 
-Now that we have that set, we have the bare minimum to creating object-relational mapping for our database.
+Now that we have that set, we have the bare minimum for creating object-relational mapping for our database.
 We can go and add those fields to the other model classes OR there is a more neat solution to that.
-If we copy-paste `id` and `version` fields to every class, we're avoiding one of the principles of using OOP language, which is abstraction.
+If we copy-paste `id` and `version` fields to every class, we're avoiding one of the main principles of using an OOP language - abstraction.
 
-To introduce that abstraction and allow for every entity to use the same fields, let's create the following class:
+To include abstraction and allow every entity to use the same fields, let's create the following class:
 
 [source,java]
 ----
@@ -260,7 +260,7 @@ public class User extends AbstractEntity {
     //id and version are shifted to AbstractEntity, so this class is empty now.
 }
 ----
-<.> `MappedSuperclass` is an annotation crucial to how we define abstractions in our ORM.
+<.> `MappedSuperclass` is an annotation crucial for how we define abstractions in our ORM.
 It tells Hibernate, that we are going to have these columns in every table.
 
 .Abstraction in JPA
@@ -268,18 +268,18 @@ It tells Hibernate, that we are going to have these columns in every table.
 There are four types of entity abstraction and depending on the data model structure we have to work with, we get to choose which one is more appropriate to use:
 
 
-- MappedSuperclass – the parent classes, can't have the `@Entity` annotation.
+- *MappedSuperclass* – the parent classes, can't have the `@Entity` annotation.
 This approach will set all the columns of the superclass to the inheriting entities.
-- Single Table – this method will use one table for all inheriting entities.
+- *Single Table* – this approach will use one table for all inheriting entities.
 Querying an entity, inheriting this class, will return only the columns regarding that entity.
-- Joined Table – this will create one common table for all entities, containing the common properties.
+- *Joined Table* – this will create one common table for all entities, containing the common properties.
 Querying an entity, inheriting such a class, will create a join query.
-- Table per Class – the resulting schema is similar to the one using `@MappedSuperclass`. But Table per Class will indeed define entities for parent classes, allowing associations and polymorphic queries as a result.
+- *Table per Class* – the resulting schema is similar to the one using `@MappedSuperclass`. But Table per Class will indeed define entities for parent classes, allowing associations and polymorphic queries as a result.
 
 You can find more about ORM abstraction https://www.baeldung.com/hibernate-inheritance[here].
 *****************************************
 
-=== Modeling the rest of the entities
+=== Modeling the rest of our entities
 
 Now that we have the main objects for our database model, let's add all of their columns as properties to our classes.
 
@@ -310,10 +310,10 @@ public class Subscriber extends User {}
 public class Manager extends User {}
 ----
 <.> With the `Inheritance` annotation, we're telling Hibernate how to treat this abstraction.
-In the case of Single table, we can omit using this annotation, as it is the default choice in JPA, when it comes to inheritance.
-We are using it here, just to demonstrate how it is usually done.
+In the case of Single table, we can omit the annotation, as it is the default choice in JPA, when it comes to inheritance.
+Here, we are using it, just to demonstrate how it is usually done.
 
-With the abstractions set, now we're ready to fully define our `User` entity:
+Having the abstractions set, we're ready to fully define our `User` entity:
 
 [source,java]
 ----
@@ -354,26 +354,28 @@ public class Manager extends User {
 
 ----
 <.> In the database properties from this class are stored in the same table.
-Using the `Embedded` annotation helps us to achieve `has-a` relationship, without creating an additional table to the database.
+Using the `Embedded` annotation helps us to achieve a `has-a` relationship, without creating an additional table to the database.
 
-TIP: If you look at our database model, you will see the column `DTYPE`.
-This is a column, generated automatically by the ORM, that tells what kind of user the row is connected to. It's value can be either Author, Subscriber or Manager.
+TIP: If you look at our database model at the beginning, you will see the column `DTYPE` for the `Users` table.
+This is a column, generated automatically by the ORM, to tell what kind of user class the row is related to.
+Its value can be either Author, Subscriber or Manager.
 
 ==== The `CreditCard` class
 
 .The `@Embeddable` annotation
 *****************************************
 Just like abstraction, we get to choose what kind of composition we want, regarding to our ORM model.
-We may have the database structured in one way, but want to use it in another way.
+We may have the database structured in one way, but want to use it in another.
 
 In our example the credit card would typically be one-to-one relationship, and we would have two ways to build this relation in our object model
 
 - Add one-to-one relationship, using `OneToOne` annotation.
-- Create an embeddable object, which is going to bind to columns of the same table, the main entity is from, separating this data.
+This will add another table for the credit card entity.
+- Create an embeddable object, which is going extend and bind columns of the same table (the `Users` table in our case).
 This is used to allow a more object-oriented experience, in a scenario where the database is not modeled the same way.
 *****************************************
 
-To satisfy the `Subscriber` class, let's create the "Embeddable" `CreditCard`:
+To satisfy the `Subscriber` class, let's create the `Embeddable` `CreditCard`:
 
 [source,java]
 ----
@@ -408,10 +410,10 @@ public enum CreditCardType {
 Therefore no table will be created for it.
 Take it as an extension to another entity.
 Other than that, it behaves like any other JPA class.
-On the other side, where the embeddable class is going to be embedded, we just need to add the `@Embedded` annotation (just like in `Subscriber` class).
+On the other side, where the embeddable class is going to be embedded, we just need to add the `@Embedded` annotation (just like we did in the `Subscriber` class).
 It can contain relationships and have all types of annotations supported.
 <.> The `Enumerated` annotation helps the ORM to define how this field is going to be shaped into a column.
-There're two strategies:
+There are two strategies:
  +
 - `EnumType.STRING` (Recommended) - will persist the enum as varchar string. (e.g. `CreditCardType.VISA` would be persisted as `"VISA"`)
 - `EnumType.ORDINAL` - will persist the enum as an integer, depending on the position of the enumerated value.
@@ -540,3 +542,314 @@ public enum SponsorPackage {
 <.> `Lob` is an annotation pointing that the data passed to the database will be of a binary type.
 It is recommended to use primitive arrays here, because in memory they will keep all values in one array and will be faster to access.
 Using wrapped object array, such as `Byte`, will add performance delay, as the references to the values will be scattered throughout the system's memory.
+
+=== Putting our database into action
+
+Now that we have our database model created, let's put it in use.
+Starting with our previous topic, let's start saving our articles into the database.
+
+To make things easy, we are going to change each endpoint one-by-one.
+
+==== Preparing our articles for real use
+
+As you saw in our database model all of our articles have authors.
+One author has many articles, meaning that an article cannot and should not exist without an author.
+This means that in order to create an article, we need an author to assign it to.
+Let's use our JAX-RS knowledge from the previous chapter and create the class `user.AuthorResource`
+
+[source,java]
+----
+@Path("/user/author")
+public class AuthorResource {
+
+    @POST
+    @Consumes(MediaType.APPLICATION_JSON)
+    public Response createAuthor(AuthorDTO authorDTO) {
+
+    }
+
+}
+----
+
+Along with that, we are going to need a transfer object for the author:
+
+[source,java]
+----
+public abstract class UserDTO {
+
+    private String userName;
+    private String password;
+    private String firstName;
+    private String lastName;
+    private String email;
+
+    //getters and setters
+}
+
+public class AuthorDTO extends UserDTO {
+
+    private boolean isRegular;
+    private int salary;
+
+    //getters and setters
+}
+----
+
+And finally let's add constructors to our `User` and `Author` classes.
+[source,java]
+----
+public abstract class User extends AbstractEntity {
+    // properties
+
+    public User() {
+    }
+
+    public User(String userName, String password, String firstName, String lastName, String email) { <1>
+        this.userName = userName;
+        this.password = password;
+        this.firstName = firstName;
+        this.lastName = lastName;
+        this.email = email;
+    }
+}
+
+public class Author extends User {
+    //properties
+
+    public Author() { <1>
+    }
+
+    public Author(String userName, String password, String firstName, String lastName, String email, boolean isRegular, int salary) {
+        super(userName, password, firstName, lastName, email);
+        this.isRegular = isRegular;
+        this.salary = salary;
+    }
+}
+----
+<1> When you define a constructor in a JPA class, it is important to add a default constructor as well.
+JPA is using reflection in order to set the values of the properties from the database.
+Missing a default constructor will prevent JPA from creating an instance for your class.
+
+==== The `EntityManager`
+
+In order to be able to access the database, we will need to use a special interface, called `EntityManager`.
+The entity manager has all the methods needed to read, persist, update and delete entities.
+
+Let's add the `EntityManager` to our `AuthorResource`.
+
+[source,java]
+----
+public class AuthorResource {
+
+    EntityManager entityManager;
+
+    public AuthorResource(EntityManager entityManager) { <.>
+        this.entityManager = entityManager;
+    }
+
+    public Response createAuthor(AuthorDTO authorDTO) {}
+
+}
+----
+<.> Thanks to the Quarkus ARC extension and CDI, we are able to provide instance of the entity manager, by just adding it to the class' constructor.
+This approach is not that common and we are going to look at a more Jakarta EE way to inject dependencies in our CDI chapter.
+
+Now let's define our `createAuthor` method and bind the DTOs to the entities.
+
+[source,java]
+----
+@Path("/user")
+public class AuthorResource {
+
+    EntityManager entityManager;
+
+    public AuthorResource(EntityManager entityManager) {
+        this.entityManager = entityManager;
+    }
+
+    @POST
+    @Consumes(MediaType.APPLICATION_JSON)
+    public Response createAuthor(AuthorDTO authorDTO) {
+        Author author = new Author(authorDTO.getUserName(), authorDTO.getPassword(), authorDTO.getFirstName(),
+                authorDTO.getLastName(), authorDTO.getEmail(), authorDTO.isRegular(), authorDTO.getSalary());
+        entityManager.persist(author);
+
+        return Response.created(URI.create(String.format("/user/author/%d",author.id))).build(); <.>
+    }
+}
+----
+<.> When the persist method is called and the `id` field is set to `null` or `0`, the persist method will assign it a new value.
+This is the reason why we can use the id of the newly created object, without setting it ourselves.
+
+All looks great, now let's deploy our application and create our first author.
+
+[source,curl]
+----
+curl -i --location --request POST 'localhost:8080/user/author' \
+--header 'Content-Type: application/json' \
+--data-raw '{
+    "userName": "cj_123",
+    "password": "cj_pass",
+    "firstName": "Cave",
+    "lastName": "Johnson",
+    "email": "cj@apperture-science.io",
+    "isRegular": true,
+    "salary": 10000
+}'
+----
+
+`HTTP/1.1 500 Internal Server Error` Why?
+If you look at the console, you may find the following error.
+
+----
+Transaction is not active, consider adding @Transactional to your method to automatically activate one.
+----
+
+==== The `@Transactional` annotation
+
+Using the `EntityManager` on its own wouldn't help if there is no database session and transaction created.
+As you know the database is a component detached from our project and requires connection to a server and data transmission.
+In a real life scenario, the database can be physically separated from the web application, running on a different computer.
+And since the database is our main origin of truth, we need to be sure what we wite to it is valid and consistent.
+That's why transactions come in action.
+The lifecycle of a database transaction is as follows:
+
+. Create a database session (connect to the database)
+. Start a transaction
+. Execute select, update, delete operations
+. Commit/Roll-back the transaction
+. End the database session
+
+Using JPA on its own will require you to create those sessions and transactions manually, by invoking methods from the `EntityManager` interface.
+But having manual control over the transactions is a bit advanced for simple things, that could be managed automatically.
+Jakarta EE and Quarkus have us fortunately covered.
+Quarkus implements the JTA specification, which allows the transaction to be managed automatically by the application.
+The only thing we need to do is to annotate our method with `@Transactional`.
+
+.The Java™ Transaction API (JTA)
+*****************************************
+JTA is a general API that allows transactions in Java to be managed in a neutral way.
+The session and transaction is managed by the application server, instead of the developer, which means the time a transaction opens and closes is managed by the server as well.
+
+The alternative to JTA is called _local transaction_.
+The local transaction allows the developer to decide when a session and transaction should be created and when it should be committed/rolled back.
+
+Read more about JTA in https://www.progress.com/tutorials/jdbc/understanding-jta[this article].
+*****************************************
+
+Knowing all that, let's make our method transactional...
+
+[source,java]
+----
+    @POST
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Transactional
+    public Response createAuthor(AuthorDTO authorDTO) {
+        //code...
+    }
+----
+
+That's all.
+Now if you try and execute your request again, the author should be persisted.
+
+----
+HTTP/1.1 201 Created
+Location: http://localhost:8080/user/author/1
+content-length: 0
+----
+
+[TIP]
+====
+- `@Transactional` can be used on method and on a class level.
+Using `@Transactional` on a class level is recommended only if all the methods in your class should be transactional.
+- Queries that read from the database do not need to be transactional, hence they do not require the `@Transactional` annotation.
+You need to use `@Transactional` only on methods, that induce changes on the database.
+====
+
+To make sure that our author exists, let's create a query to get it from the database.
+
+But first, let's define some constructors:
+
+[source,java]
+----
+
+public abstract class UserDTO {
+
+    //definitions
+    
+    public UserDTO() { <1>
+    }
+
+    public UserDTO(User user) {
+        userName = user.userName;
+        password = user.password;
+        firstName = user.firstName;
+        lastName = user.lastName;
+        email = user.email;
+    }
+
+    //getters and setters
+}
+
+public class AuthorDTO extends UserDTO {
+
+    //definitions
+
+    public AuthorDTO() { <1>
+    }
+
+    public AuthorDTO(Author author) {
+        super(author);
+        isRegular = author.isRegular;
+        salary = author.salary;
+    }
+
+    //getters and setters
+}
+----
+<1> Just like JPA, JSON-B uses reflection to convert JSON into POJO and backwards.
+For that reason access to a default constructor is needed.
+
+And here is the definition of our `getAuthor` method.
+
+[source,java]
+----
+@Path("/user/author")
+public class AuthorResource {
+
+    EntityManager entityManager;
+
+    public AuthorResource(EntityManager entityManager) {
+        this.entityManager = entityManager;
+    }
+
+    public Response createAuthor(AuthorDTO authorDTO) { ... }
+
+    @GET
+    @Path("/{id}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAuthor(@PathParam("id") Long authorId) {
+        if (authorId == null || authorId < 0) {
+            return Response.status(Response.Status.BAD_REQUEST).build();
+        } else {
+            Author author = entityManager.find(Author.class, authorId);
+            if (author == null) {
+                return Response.status(Response.Status.NOT_FOUND).build();
+            } else {
+                return Response.ok(new AuthorDTO(author)).build();
+            }
+        }
+    }
+}
+----
+
+And if we try to call this endpoint, we should be able to get our author.
+
+----
+curl -i --location --request GET 'http://localhost:8080/user/author/1'
+HTTP/1.1 200 OK
+Content-Type: application/json
+content-length: 147
+
+{"email":"cj@apperture-science.io","firstName":"Cave","lastName":"Johnson","password":"cj_pass","userName":"cj_123","regular":false,"salary":10000}
+----
