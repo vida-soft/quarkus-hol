@@ -410,4 +410,7 @@ curl -i --location --request GET 'http://localhost:8080/article?page=1&size=5'
 
 TIP: Try to create different types of requests and observe what kind of results you get here.
 
+
+==== Conclusion
+
 We are going to look though more of the JAX-RS features during our next sessions, while continuing our journey into making the magazine manager.

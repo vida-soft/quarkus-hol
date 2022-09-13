@@ -133,7 +133,7 @@ You can view other examples for database configuration https://quarkus.io/guides
 Now that we have our database configured, let's upgrade our project by creating our database model.
 For that purpose, we are going to follow the diagram below.
 
-image::img/db-model.jpg[allign=center]
+image::img/db-model.jpg[align=center]
 
 First off, create a new package, named `model` under `com.vidasoft.magman`.
 This will help us separate our database ORM layer from the rest of the project.
@@ -434,7 +434,10 @@ We are going to define the `Article` class as follows:
 @Entity
 public class Article extends AbstractEntity {
     public String title;
+
+    @Column(length = 10_000) <.>
     public String content;
+
     public LocalDate publishDate;
 
     @ManyToOne <.>
@@ -444,6 +447,9 @@ public class Article extends AbstractEntity {
     public List<Comment> comments = new ArrayList<>();
 }
 ----
+<.> Dy default varchar fields in databases are with a length of 255.
+An article's content would probably contain a lot more characters than that.
+With the `@Column` annotation we can define different length, suitable to store an article.
 <.> Defines that one author has many articles
 <.> Defines that one article has many comments
 
@@ -853,3 +859,404 @@ content-length: 147
 
 {"email":"cj@apperture-science.io","firstName":"Cave","lastName":"Johnson","password":"cj_pass","userName":"cj_123","regular":false,"salary":10000}
 ----
+
+==== Upgrading the `ArticleResource`
+
+Now that we are ready with the author, let's integrate it with the article.
+First off, it's time for some changes:
+
+. Add constructors to the `Article` entity
++
+[source,java]
+----
+@Entity
+public class Article extends AbstractEntity {
+    
+    // definitions
+
+    public Article() {
+    }
+
+    public Article(String title, String content, LocalDate publishDate, Author author) { <.>
+        this.title = title;
+        this.content = content;
+        this.publishDate = publishDate;
+        this.author = author;
+    }
+}
+----
+<.> For now we will decide not to assign comments to the article.
+
+. Next step is changing `author` to `authorId` inside the `ArticleDTO`, and adding constructors as well.
++
+[source,java]
+----
+public class ArticleDTO {
+
+    // definitions
+
+    public ArticleDTO() {
+    }
+
+    public ArticleDTO(Article article) {
+        this.id = article.id;
+        this.title = article.title;
+        this.content = article.content;
+        this.publishDate = article.publishDate.toString();
+        this.authorId = article.author.id;
+    }
+
+    // getters and setters
+}
+----
+
+. Now that we're done with that, it's time to refactor `ArticleResource` class method by method.
+
+==== Creating an article
+
+Let's see how we can apply our knowledge from creating an author into creating an article.
+
+First we need to introduce the `EntityManager` to the class:
+
+[source,java]
+----
+...
+    private EntityManager entityManager;
+
+    public ArticleResource(EntityManager entityManager) {
+        this.entityManager = entityManager;
+    }
+...
+----
+
+Then we refactor the `createArticle` method:
+
+[source,java]
+----
+    @POST
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Transactional <.>
+    public Response createArticle(ArticleDTO articleDTO) {
+        Author author = entityManager.find(Author.class, articleDTO.getAuthorId());
+        if (author == null) {   <.>
+            return Response.status(Response.Status.BAD_REQUEST).build();
+        } else {
+            Article article = new Article(articleDTO.getTitle(), articleDTO.getContent(),
+                    LocalDate.parse(articleDTO.getPublishDate()),author);
+            entityManager.persist(article);
+
+            return Response.created(URI.create(String.format("article/%s", article.id))).build();
+        }
+    }
+----
+<.> Don't forget that this action is `@Transactional`
+<.> It is important to make sure that the article has an author to avoid any relational errors.
+
+This should be enough to create articles.
+Now the call for creating an article would change to:
+
+[source,java]
+----
+curl -i --location --request POST 'http://localhost:8080/article/' \
+--header 'Content-Type: application/json' \
+--data-raw '{
+    "title": "Article for the soul.",
+    "content": "The quick brown fox runs over the lazy dog.",
+    "publishDate": "2022-01-12",
+    "authorId": 1
+}'
+----
+
+Other than that, everything should remain the same.
+
+==== Getting the article
+
+If you try to call the `getArticle` endpoint, though you will be met with `404` response.
+This is because we're now saving the articles to the database, not within the map.
+So let's get articles from our database instead.
+
+[source,java]
+----
+    @GET
+    @Path("/{id}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getArticle(@PathParam("id") Long articleId) {
+        if (articleId == null) {
+            return Response.status(Response.Status.BAD_REQUEST).build();
+        }
+
+        Article article = entityManager.find(Article.class, articleId);
+
+        if(article == null) {
+            return Response.status(Response.Status.NOT_FOUND).build();
+        } else {
+            return Response.ok(new ArticleDTO(article)).build();
+        }
+    }
+----
+
+Mentioning again, getting an article, does not induce any changes to the database so `@Transactional` here is not needed.
+Query this endpoint again, and you should be seeing the results.
+
+==== Getting a list of articles (Pagination)
+
+Since we are in the getting part, let's see what kind of options we have when it comes to getting all articles by pages.
+
+A paginated query to the entity manager would look like that:
+
+[source,java]
+----
+    @GET
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getArticles(@QueryParam("page") @DefaultValue("1") int page,
+                                @QueryParam("size") @DefaultValue("10") int size) {
+        if (page < 1 || size < 0) {
+            return Response.status(Response.Status.BAD_REQUEST).build();
+        } else {
+            List<Article> articles = entityManager.createQuery("select a from Article a", Article.class) <.>
+                    .setFirstResult((page - 1) * size) <.>
+                    .setMaxResults(size) <.>
+                    .getResultList();
+
+            List<ArticleDTO> articleDTOs = articles.stream()
+                    .map(ArticleDTO::new)
+                    .collect(Collectors.toList());
+
+            return Response.ok(articleDTOs).build();
+        }
+    }
+----
+<.> The create query method will take an https://docs.jboss.org/hibernate/orm/3.3/reference/en/html/queryhql.html[HQL language] query and convert it to the specific language the database works with.
+Since the entity manager does not have a method to request a list of all entities out of the box, we need to specifically query that.
+
+Now if we try and call the endpoint, we are going to get the same result, like we did when we used tha map.
+
+But let's not just limit ourselves with just getting all the articles.
+What if our users want to see the articles of a specific author?
+
+It's time to touch our `getArticles` even a bit more and make it smarter.
+Why don't you try and modify it yourself?
+
+Here are some tips:
+. Add a new query parameter to the endpoint, called `authorId`
+. Check if that id is valid - if the id is null, get all articles, if the id is not null, create a query with a where clause...
+
+.Using the `where` clause with entity manager.
+====
+Using the `entityManager.createQuery()` method we can define any query that we want, but what is the proper way to define a query like that:
+
+[source,sql]
+----
+select a from Articles where a.author.id = 1
+----
+
+First thing that would come to the untrained mind is to use the `String.format()` method, or any type of concatenation where the variable will be.
+But there is a more lean way to do that.
+
+With the `setParameter()` method, you can neatly set parameters to your query.
+In order to use the `setParameter` method, we need to define our query like this:
+
+[source,sql]
+----
+select a from Article a where a.author.id = :authorId
+----
+
+or if we do not want to give the parameter a name
+
+[source,sql]
+----
+select a from Article a where a.author.id = ?1
+----
+
+Then in Java we would use the set parameter as follows:
+
+[source,java]
+----
+List<Article> articles = entityManager.createQuery("select a from Article a where a.author.id = :authorId")
+    .setParameter("authorId", authorId)
+    .getResultList();
+
+// or in the case of param number
+
+List<Article> articles = entityManager.createQuery("select a from Article a where a.author.id = :authorId")
+    .setParameter(1, authorId)
+    .getResultList();
+----
+
+Using this knowledge, now you can properly define your query for getting articles by author.
+
+====
+
+Now that you are able to query articles by authors, you have a more real-life endpoint that is suitable to work with.
+
+.Adding `insert.sql` script
+*****************************************
+All's good, but don't you get tired from creating authors and articles every time you need to test something?
+Let's change that a bit.
+
+Add a file, called `import.sql` into `main/resources` folder.
+And add the following script:
+
+[source,sql]
+----
+insert into Users (version, email, firstName, lastName, password, userName, isRegular, salary, DTYPE, id)
+values (0, 'cj@apperture-science.io', 'Cave', 'Johnson', 'cj_pass', 'cj_123', true, 10000, 'Author', 1),
+       (0, 'jane@apperture-science.io', 'Jane', 'Doe', 'jd_pass', 'jd_123', true, 10000, 'Author', 2);
+
+
+insert into ARTICLE (ID, VERSION, CONTENT, PUBLISHDATE, TITLE, AUTHOR_ID)
+values (3, 0, 'The quick brown fox runs over the lazy dog.', '2022-01-12', 'Article for the soul.', 1),
+       (4, 0, 'This is an article by the same author, who created Ipsum Lorem', '2022-02-12', 'The aitor that created',
+        1),
+       (5, 0, 'This is how I got my hands into Java long time ago. Long article here...', '2020-01-10',
+        'The way I became Java developer', 2),
+       (6, 0, 'This is my extreme enjoyment of Quarkus, written in an article', '2022-09-13',
+        'I love Quarkus and Quarkus loves me back', 2);
+
+
+alter sequence HIBERNATE_SEQUENCE restart with 7;
+----
+
+Now every time the application has started, reloaded it will insert those entries, so the database will always be filled with some data.
+*****************************************
+
+==== Updating an article
+
+Continuing out progress, let's see how an article is updated.
+
+[source,java]
+----
+    @PUT
+    @Path("/{id}")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    @Transactional
+    public Response editArticle(@PathParam("id") Long articleId, ArticleDTO articleDTO) {
+        if (articleId == null || articleId < 1) {
+            return Response.status(Response.Status.BAD_REQUEST).build();
+        }
+
+        Article article = entityManager.find(Article.class, articleId);
+
+        if (article == null) {
+            return Response.status(Response.Status.NOT_FOUND).build();
+        } else {
+            article.content = articleDTO.getContent();
+            article.publishDate = LocalDate.parse(articleDTO.getPublishDate());
+            article.title = articleDTO.getTitle();
+
+            entityManager.merge(article); <.>
+            return Response.ok(new ArticleDTO(article)).build();
+        }
+    }
+
+----
+<.> Usage of `entityManager.merge()` here is optional.
+As long as the invocation of the `find` method has been made within a `@Transactional` method, you needn't call `entityManager.merge()`.
+When the transaction is finished, all the modifications on the article class will be automatically persisted.
+
+.`persist()` vs `merge()`
+*****************************************
+Getting an article object doesn’t always mean that you get an article entity. This is because the objects have different states when JPA is regarded.
+The below figure shows how this works:
+
+image::img/entity-state-chart.png[title="Entity state diagram",align="center"]
+
+When calling the `persist()` on an entity class, the entity manager, will always try to create a new entity.
+The entity then is tracked by the entity manager (merged) and all the changes done to it, within the `@Transactional` context will be executed upon transaction flushing.
+
+If the entity is detached, when the instance of an entity is passed outside a transactional context for example, you will need to call `entityManager.merge()` in order to connect it to an entity inside the database.
+The method will look for the entity by its id and apply all the changes to that entity.
+This method should be used only on already existing entities.
+
+Due to the way our endpoints are constructed, having to merge an entity is a rare occasion, but not unfeasible.
+If you happen to stumble upon a situation, where you need to call the `merge` method, and you didn't you'll probably get an exception, stating that the entity has not been merged to be persisted.
+
+Then you'll need to refactor your implementation and invoke `merge()` where needed.
+
+*****************************************
+
+==== Deleting an article
+
+Moving forward with our last CRUD operation - deleting an article.
+One way to define it is like that:
+
+[source,java]
+----
+    @DELETE
+    @Path("/{id}")
+    @Transactional
+    public void deleteArticle(@PathParam("id") Long articleId) {
+        if (articleId != null && articleId >= 1) {
+            Article article = entityManager.find(Article.class, articleId);
+            entityManager.remove(article);
+        }
+    }
+----
+
+Although there is a problem here.
+Instead of making one query, we are making two.
+First we select an article, that might be existing in the database, then we invoke delete on it.
+
+[TIP]
+====
+Why don't you try to create a query for deleting the article with a single query?
+This is your task.
+
+And here are some hints:
+
+. Use what you already know about creating custom queries
+. To execute your query, invoke the method, called `executeUpdate()`
+====
+
+==== Optimizing our queries
+
+Using the `entityManager.createQuery()` method, might add some delay to our queries.
+In our scenario we don't see that, because we are working with small amount of data, but in a broad scenario, it would take some time to interpret the query and translate it to the native SQL language for the regarded database.
+Imagine putting this in a loop, and every time the method is invoked, it has to interpret your query again and again.
+It's impractical.
+
+Using this method is only recommended when the query is quite dynamic.
+In our case all of our queries are mostly static.
+The only difference is a variable here and there.
+Thankfully JPA offers another more optimized approach for static queries.
+Presenting "*Named queries*".
+Named queries are queries, which are specified on class level and are interpreted at the startup of the application.
+So every time you create a query, you are going to use its native language under the hood.
+
+Let's now go to our `Article` class and create a couple of named queries, that we use for our endpoints.
+
+[source,java]
+----
+@NamedQuery(name = Article.GET_ALL_ARTICLES, query = "select a from Article a") <.>
+@NamedQuery(name = Article.GET_ALL_ARTICLES_FROM_AUTHOR, query = "select a from Article a where a.author.id = :authorId")
+@NamedQuery(name = Article.DELETE_ARTICLE, query = "delete from Article a where a.id = :articleId")
+public class Article extends AbstractEntity {
+
+    //It is recommended to use constants, so if the name changes, it should be only in one place.  
+    public static final String GET_ALL_ARTICLES = "Article.getAllArticles"; <.>
+    public static final String GET_ALL_ARTICLES_FROM_AUTHOR = "Article.getAllArticlesFromAuthor";
+    public static final String DELETE_ARTICLE = "Article.deleteArticle";
+
+    //rest of the code
+}
+----
+
+<.> With the `@NamedQuery` annotation, we are telling JPA/Hibernate, to interpret a query for that HQL query at server startup.
+<.> Names of the queries should be unique, as it does not matter where the annotation is placed.
+You can literally place it on a different class, and it will work without any problems.
+The only way for JPA to find your query is by its unique name.
+
+Now let's replace all occurrences of `entityManager.createQuery()`, with `entityManager.createNamedQuery()` in our `ArticleResource`.
+
+TIP: Try and do it yourself.
+Use the constants for passing the name of the query.
+
+==== Conclusion
+
+As with JAX-RS that's not all.
+There is more to learn for the JPA spec, and we are going to give you more examples along this course. 
+But never stop being curious!
+Go onto the internet, play with the code we have created and see how it all works.
+
+Our next step is to see how Quarkus Panache comes in action and simplify those queries even further.
