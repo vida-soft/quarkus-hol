@@ -1,0 +1,223 @@
+== Quarkus Panache and Active record pattern
+
+The next step of our JPA journey is to upgrade our knowledge and add something Quarkus to the mix.
+One awesome feature that comes with Quarkus is their Panache API.
+Panache is a programming interface that adds extensions to the entities and allows the Active record pattern, where instead of using the `EntityManager` for managing your entities, you can directly call methods such as `find()`, `persist()`, `delete()`.
+This would make your code look cleaner, better to understand and easier to work with. 
+
+To prove that, let's see it in action.
+If you have followed the previous chapter, you should have Panache already imported to your project.
+Now it is time to upgrade our database entities to use Panache, instead of EntityManager.
+
+=== The `PanacheEntityBase` class
+
+Converting an entity to an active record is very easy.
+In our case, even easier.
+What you need to do is simply extend the entity class with `PanacheEntityBase`, and ta-da!
+You have an acive record entity.
+
+[source,java]
+----
+public abstract class AbstractEntity extends PanacheEntityBase {...}
+----
+
+Extending `AbstractEntity` with the `PanacheEntityBase` class allowes active record for all of our entities.
+
+TIP: Panache also offeres the `PanacheEntity` class, but here we would reather not use it as it has its own definition of the entity id, and we want to define it as our needs or database requires it.
+
+Now that we have extended our `AbstractEntity`, we can go to our `AuthorResource` and edit it to support Active record.
+
+First, let's get rid of the `EntityManager` initialization.
+Remove the constructor and the definition of `EntityManager`.
+
+Then, let's touch our methods a bit...
+
+[source,java]
+----
+    @POST
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Transactional
+    public Response createAuthor(AuthorDTO authorDTO) {
+
+        Author author = new Author(authorDTO.getUserName(), authorDTO.getPassword(), authorDTO.getFirstName(),
+                authorDTO.getLastName(), authorDTO.getEmail(), authorDTO.isRegular(), authorDTO.getSalary());
+        author.persist(); <.>
+
+        return Response.created(URI.create(String.format("/user/author/%d",author.id))).build();
+    }
+
+    @GET
+    @Path("/{id}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAuthor(@PathParam("id") Long authorId) {
+        if (authorId == null || authorId < 0) {
+            return Response.status(Response.Status.BAD_REQUEST).build();
+        } else {
+            Author author = Author.findById(authorId); <.>
+            if (author == null) {
+                return Response.status(Response.Status.NOT_FOUND).build();
+            } else {
+                return Response.ok(new AuthorDTO(author)).build();
+            }
+        }
+    }
+----
+<.> The `persist()` method will either create or update entity.
+You can use it with existing entities or new entities.
+The option to update the entity without calling `persist()` stays the same, as long as the entity is attached to the transactional scope.
+<.> The `findById()` method will obviously search for that entity by its id and return it, or return null if it is not present.
+
+[TIP]
+==== 
+Instead of using `findById()`, you can use `findByIdOptional()` and simplify your `getAuthor` method to look like this:
+
+[source,java]
+----
+    public Response getAuthor(@PathParam("id") Long authorId) {
+        if (authorId == null || authorId < 0) {
+            return Response.status(Response.Status.BAD_REQUEST).build();
+        } else {
+            return Author.<Author>findByIdOptional(authorId) <.>
+                    .map(author -> Response.ok(new AuthorDTO(author)).build())
+                    .orElseGet(() -> Response.status(Response.Status.NOT_FOUND).build());
+        }
+    }
+----
+<.> The generic find methods from `PanacheEntity` class are not able to always recognize what kind of return type you expect at the end.
+Therefor sometimes explicitly mentioning the class is needed.
+==== 
+
+Alright! The easy part has been completed.
+Let's move to the author resource and do smoe changes there too.
+
+=== Using Panache in `ArticleResource`
+
+Let's see how we can use panache for every other endpoint in our `ArticleResource`.
+
+==== Creating an article:
+
+Here, just like creating an author, we can simply replace the `entityManager.persist()`, with `article.persist()`
+
+[source,java]
+----
+    @POST
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Transactional
+    public Response createArticle(ArticleDTO articleDTO) {
+        Author author = Author.findById(articleDTO.getAuthorId());
+        if (author == null) {
+            return Response.status(Response.Status.BAD_REQUEST).build();
+        } else {
+            Article article = new Article(articleDTO.getTitle(), articleDTO.getContent(),
+                    LocalDate.parse(articleDTO.getPublishDate()), author);
+            article.persist();
+            return Response.created(URI.create(String.format("article/%s", article.id))).build();
+        }
+    }
+----
+
+==== Updating an article
+
+To update an existing article we can litterally do the same, or even better.
+As mentioned in our JPA chapter, we don't need to use `.persist()` at all.
+
+[source,java]
+----
+    public Response editArticle(@PathParam("id") Long articleId, ArticleDTO articleDTO) {
+        if (articleId == null || articleId < 1) {
+            return Response.status(Response.Status.BAD_REQUEST).build();
+        }
+
+        Article article = Article.findById(articleId);
+
+        if (article == null) {
+            return Response.status(Response.Status.NOT_FOUND).build();
+        } else {
+            article.content = articleDTO.getContent();
+            article.publishDate = LocalDate.parse(articleDTO.getPublishDate());
+            article.title = articleDTO.getTitle();
+
+            return Response.ok(new ArticleDTO(article)).build();
+        }
+    }
+----
+
+==== Removing an article
+
+Removing an article is also very simple, you don't even have to define a speciffic query for it.
+You need to simply invoke the `delete()` method.
+
+[source,java]
+----
+    public void deleteArticle(@PathParam("id") Long articleId) {
+        Article.delete("id", articleId); <.>
+    }
+----
+<.> In the first argument of the delete method you can either place a whole JPQL query or define only the properties, you are searching by.
+
+==== Getting an article
+
+Here comes the fun part.
+In fact why don't you try to edit the `getArticle()` method to support the Panache active record aproach, while we explain the other queries from `getArticles()`?
+
+
+Looking at `getArticles()` method, reworking it would look like this:
+
+[source,java]
+----
+    @GET
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getArticles(@QueryParam("page") @DefaultValue("1") int page,
+                                @QueryParam("size") @DefaultValue("10") int size,
+                                @QueryParam("author") Long authorId) {
+        if (page < 1 || size < 0 || authorId != null && authorId < 1) {
+            return Response.status(Response.Status.BAD_REQUEST).build();
+        } else {
+            String query = authorId == null ? Article.GET_ALL_ARTICLES : Article.GET_ALL_ARTICLES_FROM_AUTHOR;
+            List<Article> articles = (authorId == null ? Article.findAll() :
+                    Article.find("#" + query, Map.of("authorId", authorId))) <.>
+                            .page(page - 1, size) <.>
+                            .list();
+
+            return Response.ok(articles.stream().map(ArticleDTO::new).collect(Collectors.toList())).build();
+        }
+    }
+----
+<.> Referring to a `NamedQuery` in Panache would require adding a `#` to the sting.
+<.> The page and size is defined through the `page()` method, which will accutatrly then calculate how many results to pull from the database.
+As always pages start with a zero-based index, so you need to subtract 1 from the inputted content.
+
+There is also another more preferred way.
+In fact most of where queries do not require creating a named query when using panache.
+Quarkus has optimized that for you, so you can change the query to:
+
+[source,java]
+----
+    @GET
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getArticles(@QueryParam("page") @DefaultValue("1") int page,
+                                @QueryParam("size") @DefaultValue("10") int size,
+                                @QueryParam("author") Long authorId) {
+        if (page < 1 || size < 0 || authorId != null && authorId < 1) {
+            return Response.status(Response.Status.BAD_REQUEST).build();
+        } else {
+            List<Article> articles = (authorId == null ? Article.findAll() :
+                    Article.find("author.id = ?1", authorId)) <.>
+                            .page(page - 1, size)
+                            .list();
+
+            return Response.ok(articles).build();
+        }
+    }
+----
+<.> Instead of using named queries, for a simple query like that, you could just put your where clause checks inside the first argument of `find()`
+
+
+Now with all that that you are not using any NamedQueruies, you can go and get rid of them.
+Also it is safe to remove the `EntityManager`, as you won't need it for now.
+
+=== Conclusion
+
+And we're done.
+This is all the basics you need to know using Panache with JPA.
+With our next section we are going to integrate both JPA and Panache into deeper operations, so you can find out more tricks and techniques using tohose APIs.

@@ -495,12 +495,12 @@ Here is how our `Comment` class should look like:
 @Entity
 public class Comment extends AbstractEntity {
 
-    private String content;
+    public String content;
 
     @ManyToOne
-    private User author;
+    public User author;
 
-    private LocalDateTime created;
+    public LocalDateTime created;
 
 }
 ----
@@ -1026,7 +1026,7 @@ A paginated query to the entity manager would look like that:
         }
     }
 ----
-<.> The create query method will take an https://docs.jboss.org/hibernate/orm/3.3/reference/en/html/queryhql.html[HQL language] query and convert it to the specific language the database works with.
+<.> The create query method will take an https://docs.jboss.org/hibernate/orm/3.3/reference/en/html/queryJPQL.html[JPQL language] query and convert it to the specific language the database works with.
 Since the entity manager does not have a method to request a list of all entities out of the box, we need to specifically query that.
 
 Now if we try and call the endpoint, we are going to get the same result, like we did when we used tha map.
@@ -1242,7 +1242,7 @@ public class Article extends AbstractEntity {
 }
 ----
 
-<.> With the `@NamedQuery` annotation, we are telling JPA/Hibernate, to interpret a query for that HQL query at server startup.
+<.> With the `@NamedQuery` annotation, we are telling JPA/Hibernate, to interpret a query for that JPQL query at server startup.
 <.> Names of the queries should be unique, as it does not matter where the annotation is placed.
 You can literally place it on a different class, and it will work without any problems.
 The only way for JPA to find your query is by its unique name.

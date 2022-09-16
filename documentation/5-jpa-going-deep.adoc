@@ -1,0 +1,406 @@
+== JPA. Going deep
+
+In this chapter we are going to look at more sophisticaded queries so we can better understand how to get some things done using JPA.
+
+=== Adding comments to an article. The `one-to-many` relationship
+
+The beginning of our journey will start with our one-to-many relationship `Article -> Comment`. For a start, let's extend our `import.sql` by adding a few subscribers.
+
+[source,sql]
+----
+insert into Users (version, email, firstName, lastName, password, userName, streetAddress, subscribedUntil,
+                   creditCardType, number, DTYPE, id)
+values (0, 'sarah@google.space', 'Sarah', 'Connor', 'sarAPass', 'sarah_9645', 'Hamburger Str.', '2024-01-12', 'VISA',
+        '3698521479', 'Subscriber', 7);
+values (0, 'peter@linked.io', 'Peter', 'Blanca', 'pb&^%', 'peter_998', 'Mustard str.', '2024-01-13', 'MASTER_CARD',
+        '8774662321', 'Subscriber',8);
+values (0, 'kchuck@pongo.eu', 'Chuck', 'Keith', 'chUk', 'chuck_0998', 'Sausage Str.', '2024-01-14', 'AMERICAN_EXPRESS',
+        '3698521479', 'Subscriber', 9);
+
+alter sequence HIBERNATE_SEQUENCE restart with 10;
+----
+
+Having that set, let's create our endpoint for adding comments in a new resource, called `CommentResource`
+
+. Create the class `magman.comment.CommentResource` and assign the path `/article/{id}/comment.
+. Create the class `CommentDTO` in the same package and add all required fields, getters/setters and constructors.
+. Add a list of comments to the `ArticleDTO`.
+. Add a POST endpoint method called `createComment()` to the comment resource.
+Decorate it with all required annotations needed to access it.
+
+At the end our endpoint should look like this:
+
+[source,java]
+----
+    @POST
+    @Transactional
+    @Consumes(MediaType.APPLICATION_JSON)
+    public Response createComment(@PathParam("id") Long articleId, CommentDTO commentDTO) {
+        if (articleId == null || articleId < 1 || commentDTO.getAuthorId() == null || commentDTO.getAuthorId() < 1) {
+            return Response.status(Response.Status.BAD_REQUEST).build();
+        }
+
+        User author = User.findById(commentDTO.getAuthorId()); <.>
+        if (author == null) {
+            return Response.status(Response.Status.BAD_REQUEST).build();
+        }
+
+        Article article = Article.findById(articleId);
+        if (article == null) {
+            return Response.status(Response.Status.NOT_FOUND).build();
+        }
+
+        Comment comment = new Comment(commentDTO.getContent(), author, LocalDateTime.now());
+
+        article.comments.add(comment); <.>
+        comment.persist(); <.>
+
+        return Response.created(URI.create(String.format("/article/%d/comment/%d", articleId, comment))).build();
+    }
+----
+<.> Any user could type be an author of a comment.
+Since we are not interested into the additional attrobutes of the type of user, we can simply query with the `User` entity.
+Here we are also getting the `userId` from the comment as we still don't have mechanisms to get the user from a session.
+<.> When we have `@OneToMany` relationship between an article and a comment, we first need to add the comment to the article's comments list.
+<.> Before we return a response, we first need to persist the comment.
+
+[TIP]
+====
+In this example we do not need to add `article.persist()`, because as we mentioned before during a transaction context, modifications on *attached* entities will be applied automatically. 
+====
+
+Now when we have added comment to the article, invoking that article will return its comment also.
+Here is an example query:
+
+[source,curl]
+----
+curl --location --request POST 'localhost:8080/article/3/comment' \
+--header 'Content-Type: application/json' \
+--data-raw '{
+    "content": "The quick brown fox jumps over the lazy dog.",
+    "authorId": 7
+}'
+----
+
+NOTE: All that we need for now in the query is the content and the user's id.
+In the future we are only going to need the content, as all other data will be set by the web server, as it is not a concern for the client.
+
+Perfect! But have you ever seen a comment section of any type of content?
+Sometimes they might be thousands, depending on how viral the conent is.
+This is the reason why we don't want to get all entities in one-to-many relationship entity.
+We want to get them in a moderate fashion, give the user as many as they would probably read.
+To show off the different capabilities of JPA, let's do some modifications...
+
+=== Separating the comments from the article, but keeping them intact
+
+We do not want to load all the comments when querying articles.
+So let's do something about it.
+
+First we can remove the list of comments from the `Article` entity.
+Remove the list, remove the `@OneToMany` annotation.
+ +
+Then we might be faing the issue that our `ArticleDTO` constructor is not receiving comments.
+Here you can simply remove the initialization of comments from the constructor or wherever you defined comments for article in your code, but leave the peopery and getters/setters fro `CommentDTO`.
+As for adding a comment to an article, set the article to the comment.
+
+[source,java]
+----
+ public Response createComment(@PathParam("id") Long articleId, CommentDTO commentDTO) {
+    // Validation checks
+
+    Comment comment = new Comment(commentDTO.getContent(), author, LocalDateTime.now());
+    comment.article = article;
+    comment.persist();
+
+    return Response.created(URI.create(String.format("/article/%d/comment/%d", articleId, comment.id))).build();
+}
+
+@Entity
+public class Comment extends AbstractEntity {
+
+    //Definitions
+
+    @ManyToOne
+    public Article article;
+
+    //constructors
+}
+----
+
+Now when you query to get an article, you won't be able to see any comments.
+
+==== Getting list of speciffic columns in s query
+
+Let's say that we don't want to get the comments of an article, when we query a list of articles, but we want those comments when we want a single article.
+
+There's two approaches we can look throigh here:
+
+- Create a separate query and assign those values additionally
+- Create a composite query and then assign the values ourselves
+
+Let's look at the second one as it is complex more. 
+We suggest that you know what happens in the first option.
+
+For a start, let's add a query parameter to the `getArticle()` method, called `withComments`.
+
+[source,java]
+----
+public Response getArticle(@PathParam("id") Long articleId, @QueryParam("withComments") boolean withComments) { 
+    //implementation
+ }
+----
+
+Next, let's create a named query that will get the article with comments:
+
+[source,sql]
+----
+select a, c from Article a left join Comment c on c.article = a where a.id = :articleId
+----
+
+And at the end our `getArticle` implementation will look like this
+[source,java]
+----
+    public Response getArticle(@PathParam("id") Long articleId, @QueryParam("withComments") boolean withComments) {
+        if (articleId == null) {
+            return Response.status(Response.Status.BAD_REQUEST).build();
+        }
+
+        Optional<Article> article = Optional.empty();
+        List<Comment> comments = new ArrayList<>();
+        if (withComments) {
+            List<Object[]> articleWithComments = Article.getEntityManager() <.>
+                    .createNamedQuery(Article.GET_ARTICLE_WITH_COMMENTS, Object[].class)
+                    .setParameter("articleId", articleId)
+                    .getResultList();
+
+            if (!articleWithComments.isEmpty()) {
+                article = Optional.of((Article) articleWithComments.get(0)[0]);
+                comments = new ArrayList<>();
+                for (var set : articleWithComments) { <.>
+                    if (set[1] != null) {
+                        comments.add((Comment) set[1]);
+                    }
+                }
+            }
+        } else {
+            article = Article.findByIdOptional(articleId);
+        }
+
+        if (article.isPresent()) {
+            ArticleDTO articleDTO = article.map(ArticleDTO::new).get();
+            List<CommentDTO> commentDTOS = comments.stream().map(CommentDTO::new).collect(Collectors.toList());
+            articleDTO.setComments(commentDTOS);
+            return Response.ok(articleDTO).build();
+        } else {
+            return Response.status(Response.Status.NOT_FOUND).build();
+        }
+    }
+----
+<.> When we ask for more than one object in a query, the entity manager will return array of objetcs.
+We have to then manually cast those objects into whatever type we need.
+<.> The result of our query will give us a list of the same article with different comment.
+Since we want to hava a single article with a list of comments, we have to loop through the results and join them as single list of comments.
+
+There is even more neat way to avoid all that casting.
+With JQL we can add java objects to the query.
+To do so, let's create a wrapping object in the `model` package, called `ArticleWithComment`.
+
+==== Inserting additional objects to a JQL query
+
+Our `ArticleWithComment` entity should look like this:
+
+[source,java]
+----
+public class ArticleWithComment {
+
+    public Article article;
+    public Comment comment;
+
+    public ArticleWithComment(Article article, Comment comment) {
+        this.article = article;
+        this.comment = comment;
+    }
+}
+----
+
+After we have implemented it, we need to upgrade our JQL query to support it.
+
+[source,java]
+----
+select new com.vidasoft.magman.model.ArticleWithComment(a, c) from Article a left join Comment c on c.article = a where a.id = :articleId
+----
+
+And now implement it in our resource method:
+
+[source,java]
+----
+//checks
+if (withComments) {
+    List<ArticleWithComment> articleWithComments = Article.getEntityManager()
+            .createNamedQuery(Article.GET_ARTICLE_WITH_COMMENTS, ArticleWithComment.class)
+            .setParameter("articleId", articleId)
+            .getResultList();
+
+    if (!articleWithComments.isEmpty()) {
+        article = Optional.of(articleWithComments.get(0).article);
+        comments = new ArrayList<>();
+        for (var set : articleWithComments) {
+            if (set.comment != null) {
+                comments.add(set.comment);
+            }
+        }
+    }
+}
+
+//returns
+----
+
+NOTE: Unfortunately with the way JPA has been designed and the complexity of our query, we are yet not able to get a list of comments, so we have to create it manually.
+
+==== Creating native queries with JPA
+
+Sometimes JPA can't perform queries speciffic for the database.
+Then you will need to create a native query that is capable to perform the operations you need.
+
+To demonstrate that, let's implement an endpoint for getting a comment by its id.
+But this time, instead of using JQL or panache, we are going to do it with a native query.
+
+First off, create a `@NativeNamedQuery` to get the comment by its id:
+
+[source,java]
+----
+@Entity
+@NamedNativeQuery(name = Comment.GET_COMMENT_BY_ID,
+query = "select ID, CONTENT, AUTHOR_ID, CREATED from COMMENT where id = :commentId")
+public class Comment extends AbstractEntity {
+    //implementation
+}
+----
+
+Then to simplify things, add a constructor to the `CommentDTO` that takes all properties.
+
+[source,java]
+----
+public class CommentDTO {
+
+    //properties
+
+    public CommentDTO(Long id, String content, Long authorId, String created) {
+        this.id = id;
+        this.content = content;
+        this.authorId = authorId;
+        this.created = created;
+    }
+
+    //more constructors, getters and setters
+}
+----
+
+And finally, let's implement our `getComment` endpoint:
+
+[source,java]
+----
+    @GET
+    @Path("/{commentId}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getCommentById(@PathParam("commentId") Long commentId) {
+        if (commentId == null || commentId < 1) {
+            return Response.status(Response.Status.BAD_REQUEST).build();
+        } else {
+            Object[] commentResult = (Object[]) Comment.getEntityManager().createNamedQuery(Comment.GET_COMMENT_BY_ID) <.>
+                    .setParameter("commentId", commentId)
+                    .getResultStream()
+                    .findFirst()
+                    .orElse(null);
+            if (commentResult == null) {
+                return Response.status(Response.Status.NOT_FOUND).build();
+            } else {
+                CommentDTO comment = new CommentDTO(    <.>
+                        ((BigInteger) commentResult[0]).longValue(), //id <.>
+                        (String) commentResult[1], //content
+                        ((BigInteger) commentResult[2]).longValue(), //author id
+                        commentResult[3].toString() // created
+                );
+                return Response.ok(comment).build();
+            }
+        }
+    }
+----
+<.> Just like with composite queries, what we get in return here is an array of `Object[]`, which we have to cast into the types we require.
+<.> The order in which the result array is constructed is the same as the one in our query.
+This is how you are supposed to know which value is which.
+<.> Sometimes the object that JPA decides to use for the types in our database for native queries may differ from what we actually want, so we need to address that, by additional casting.
+
+You can argue that this doesn't look that neat, right?
+Thankfully there is another way to save ourselves from all that casting.
+
+==== The `@SqlResultMapping` annotation
+
+In order to make that result mapping automatic by JPA, there is also an annotation that is going to help us out.
+The usage of this annotation is not going to work with all scenarios, so this is the reason why we are left with the option to do the casting ourselves.
+Let's add this annotation above our `NamedNativeQuery`.
+
+[source,java]
+----
+@Entity
+@SqlResultSetMapping(name = Comment.GET_COMMENT_BY_ID, <.>
+        classes = {
+                @ConstructorResult(targetClass = CommentDTO.class, columns = { <.>
+                        @ColumnResult(name = "ID", type = Long.class),
+                        @ColumnResult(name = "CONTENT"),
+                        @ColumnResult(name = "AUTHOR_ID", type = Long.class),
+                        @ColumnResult(name = "CREATED", type = String.class)
+                })
+        })
+@NamedNativeQuery(name = Comment.GET_COMMENT_BY_ID,
+        query = "select ID, CONTENT, AUTHOR_ID, CREATED from COMMENT where id = :commentId",
+        resultSetMapping = Comment.GET_COMMENT_BY_ID) <.>
+public class Comment extends AbstractEntity {
+    //implementation
+}
+----
+<.> Here we can use the same name as the name of the query
+<.> The order in which the variables are assigned is the same in which the `CommentDTO` constructor was previously defined.
+<.> In the native query we place the name of the mapper in `resultSetMapping`
+
+Now when we go back to our `CommentResource` our `getComment` implementation may look like this:
+
+[source,java]
+----
+    @GET
+    @Path("/{commentId}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getCommentById(@PathParam("commentId") Long commentId) {
+        if (commentId == null || commentId < 1) {
+            return Response.status(Response.Status.BAD_REQUEST).build();
+        } else {
+            CommentDTO comment = Comment.getEntityManager().createNamedQuery(Comment.GET_COMMENT_BY_ID, CommentDTO.class)
+                    .setParameter("commentId", commentId)
+                    .getResultStream()
+                    .findFirst()
+                    .orElse(null);
+            if (comment == null) {
+                return Response.status(Response.Status.NOT_FOUND).build();
+            } else {
+                return Response.ok(comment).build();
+            }
+        }
+    }
+----
+
+WARNING: Native queries are suitable when you use the same database through all your environments.
+This means what you should use the same database even for testing, as you cannot test a native query in the same SQL dialect for different databases, unless they have the same dialect.
+
+=== Going even deeper
+
+There's even more stuff to look at.
+Unfortunately the scope of our project will not allow us to show appropriate examples.
+But this doesn't stop you to go online and look for some JPA tips and tricks for yourself.
+Here are a couple of topics to begin with:
+
+- https://vladmihalcea.com/the-best-way-to-use-the-manytomany-annotation-with-jpa-and-hibernate/[Many-to-many relationships]
+- https://vladmihalcea.com/the-best-way-to-map-a-onetoone-relationship-with-jpa-and-hibernate/[One-to-one relationships]
+- https://thorben-janssen.com/hibernate-tips-query-elementcollection/[Ellement collections]
+
+All the articles have been written by top developers, who have activerly contributed for and stay behind Hibernate, Eclipse and the JPA specifications.
+You can always trust and use their guides as foundations of project's data model.
