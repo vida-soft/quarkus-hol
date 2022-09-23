@@ -1,14 +1,18 @@
 package com.vidasoft.magman.model;
 
+import javax.persistence.CascadeType;
 import javax.persistence.Column;
 import javax.persistence.Entity;
+import javax.persistence.JoinColumn;
+import javax.persistence.JoinTable;
+import javax.persistence.ManyToMany;
 import javax.persistence.ManyToOne;
-import javax.persistence.NamedQueries;
 import javax.persistence.NamedQuery;
 import javax.persistence.OneToMany;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 @Entity
 @NamedQuery(name = Article.GET_ALL_ARTICLES, query = "select a from Article a")
@@ -31,6 +35,13 @@ public class Article extends AbstractEntity {
 
     @OneToMany
     public List<Comment> comments = new ArrayList<>();
+
+    @ManyToMany(cascade = {CascadeType.PERSIST, CascadeType.MERGE})
+    @JoinTable(name = "article_advertiser",
+            joinColumns = @JoinColumn(name = "advertiser_id"),
+            inverseJoinColumns = @JoinColumn(name = "article_id")
+    )
+    public Set<Advertiser> advertisers;
 
     public Article() {
     }

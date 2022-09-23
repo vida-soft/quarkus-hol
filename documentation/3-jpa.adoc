@@ -472,6 +472,9 @@ public class Advertiser extends AbstractEntity {
 
     public String contactEmail;
 
+    @ManyToOne
+    public Article article;
+
     @Lob <.>
     public byte[] logo;
 

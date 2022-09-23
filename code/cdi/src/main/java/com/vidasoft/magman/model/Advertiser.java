@@ -25,4 +25,13 @@ public class Advertiser extends AbstractEntity {
     @Enumerated(EnumType.STRING)
     public SponsorPackage sponsorPackage;
 
+    public Advertiser() {
+    }
+
+    public Advertiser(String name, String website, String contactEmail, SponsorPackage sponsorPackage) {
+        this.name = name;
+        this.website = website;
+        this.contactEmail = contactEmail;
+        this.sponsorPackage = sponsorPackage;
+    }
 }
