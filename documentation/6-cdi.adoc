@@ -357,12 +357,20 @@ CAUTION: Due to the way proxies are implemented, mixing scopes in some CDI imple
 For example injecting a `@RequestScoped` dependency into `@ApplicationScoped` bean on some servers may result in that instance being injected once for the whole lifespan of the `@ApplicationScoped` bean.
 This may cause issues, such as getting the same data on each new request, instead of getting newer data for that request.
 
-In Quarkus ArC there are 3 scopes implemented - Request, Application and Dependant scopes.
-This is due to the fact, that Quarkus servers are meant to be stateless.
-All the user data and configurations should come from outside in the form of a token (JWT for example).
+In Quarkus ArC there are 3 scopes implemented and one non-proxied scope, respectively - `Request`, `Application`, `Dependant` and Singleton scopes.
+Dependencies, annotated with `@Singleton` act simmliarly to the `@ApplicationScoped`, with the difference that they are not proxied, meaning that the real instance of the entity is injected.
+This allows better performance in some occasions.
+Read more about `@Singleton` beans https://quarkus.io/guides/cdi#what-scopes-can-i-actually-use-in-my-quarkus-application[here].
 
-NOTE: Usually Resource endpoints should be annotated with some kind of scope, most commonly `@RequestScoped` in order to work, but Quarkus ArC recognizes those endpoints and gives them that scope implicitly.
-This works only for endpoints, so if you want to inject any other dependency it must have at least `@Dependant` scope. 
+
+Due to the fact, that Quarkus servers are meant to be stateless.
+There's no out-of-the-box support for `SessionScoped` and `ConversationScoped` annotations,
+meaning all the user data and configurations should come from outside in the form of a token (JWT for example).
+
+NOTE: Usually Resource endpoints should be annotated with some kind of scope in order for CDI to establish access to them.
+The most commonly used scope is `@RequestScoped`.
+With Quarkus ArC, though, resources are reconized and by default the `@Singleton` scope is given to them, unless you overide it explicitly, by adding your scope.
+This works only for endpoints, so if you want to inject any other dependency it must have at least `@Dependant` scope.
 
 *****************************************
 
@@ -614,7 +622,7 @@ As you can see, we're taking the request data from the class `io.vertx.core.http
 If we did that in the constructor of the class, we wouldn't have been able to use that class.
 This comes to our conclusion, that the execution of `@PostConstruct` happens after all of our dependencies are injected.
 
-`@PreDestroy` works in the same manner, but to see it in work, you'll need to annotate your resource with `@RequestScoped`, as the scope of resource without a scope annotation is not RequestScoped by default.
+`@PreDestroy` works in the same manner, but to see it in work, you'll need to annotate your resource with `@RequestScoped`, as the scope of resource by default is `@Singleton` and `@PreDestroy` never gets called.
 Then we can create a method like this:
 
 [source,java]
@@ -1017,3 +1025,158 @@ Here are some tips.
 - Create a decorator which is going to take the blob byte content of the advertiser's logo and convert it to base64 string.
 - Attach that string logo to the DTO of the advertiser.
 ====
+
+=== Producers and alternatives
+
+So far we have injected an instance of a single class.
+But what happens when you have multiple implementations of a dependency or you want to use CDI to provide e certain type of information?
+In a typical program, when facing such a scenario, you would likely use the factory pattern and let the factory class decide which instance to return.
+In CDI on the other hand you can use the power of annotations to control what and when to be injected into the annotated class.
+
+==== Producers
+
+When you have two or more implementations of a dependency, or you want to inject something that by default is not a CDI bean, you can use CDI producers, which will generate the value you need and inject it.
+For example let's have a look at our `ArticleDecorator` class.
+We are getting all the advertisers and decorate an article with them.
+But let's say that we want to decorate the article only with `GOLD` advertisers.
+One way to do it, would be to pull out the advertisers with a query, filtering them by their type.
+Other way to do it, would be by creating a producer.
+
+For a start, create a package, called `producers` inside the `advertiser` package.
+Inside, create the class `AdvertiserProducer`.
+Next, create three new annotations - `@Gold`, `@Silver`, `@Bronze`.
+
+[source,java]
+----
+@Qualifier
+@Retention(RUNTIME)
+@Target({METHOD, FIELD, PARAMETER, TYPE})
+public @interface Gold {
+
+    SponsorPackage SPONSOR_PACKAGE = SponsorPackage.GOLD; <1>
+
+    @Nonbinding <2>
+    int limit() default 0;
+
+}
+
+@Qualifier
+@Retention(RUNTIME)
+@Target({METHOD, FIELD, PARAMETER, TYPE})
+public @interface Silver {
+    SponsorPackage SPONSOR_PACKAGE = SponsorPackage.SILVER; <1>
+
+    @Nonbinding <2>
+    int limit() default 0;
+}
+
+@Qualifier
+@Retention(RUNTIME)
+@Target({METHOD, FIELD, PARAMETER, TYPE})
+public @interface Bronze {
+
+    SponsorPackage SPONSOR_PACKAGE = SponsorPackage.BRONZE; <1>
+
+    @Nonbinding <2>
+    int limit() default 0;
+
+}
+----
+<.> We are defining a constant which we are later going to use later for our implementation.
+
+<.> The `@Nonbinding` annotation tells CDI not to compare the value, that might be set to it, with the annotation, which the producer will expect.
+If this annotation is not present, our producer woruld not work, as it will try to search for matching annotation that has `@Gold(limit = 2)` annotation for example.
+
+Now it's time to go back to the `AdvertiserProducer` and implement the methods.
+
+[source,java]
+----
+public class AdvertiserProducer {
+
+    @Gold <1>
+    @Produces <2>
+    @Dependent <3>
+    public List<Advertiser> produceGoldAdvertisers(InjectionPoint ctx) {
+        var limit = ctx.getAnnotated().getAnnotation(Gold.class).limit(); <4>
+        return getAdvertisers(Gold.SPONSOR_PACKAGE, limit);
+    }
+
+    @Silver <1>
+    @Produces <2>
+    @Dependent <3>
+    public List<Advertiser> produceSilverAdvertisers(InjectionPoint ctx) {
+        var limit = ctx.getAnnotated().getAnnotation(Silver.class).limit(); <4>
+        return getAdvertisers(Silver.SPONSOR_PACKAGE, limit);
+    }
+
+    @Bronze <1>
+    @Produces <2>
+    @Dependent <3>
+    public List<Advertiser> produceBronzeAdvertisers(InjectionPoint ctx) {
+        var limit = ctx.getAnnotated().getAnnotation(Bronze.class).limit(); <4>
+        return getAdvertisers(Bronze.SPONSOR_PACKAGE, limit);
+    }
+
+    private List<Advertiser> getAdvertisers(SponsorPackage sponsorPackage, int limit) {
+        var query = Advertiser.<Advertiser>find("sponsorPackage = ?1", sponsorPackage);
+        if (limit > 0) {
+            query = query.page(0, limit);
+        }
+
+        return query.list();
+    }
+
+}
+----
+<.> We use our qualifier annotation to help CDI choose which metho to call.
+This is mandatory, when there's more than one option to provide instance of a class.
+
+<.> This annotation tells CDI that this is a producer method.
+It is invoked when the annotation above is used with `@Inject` within the definition of a CDI managed class.
++
+CAUTION: When you import `@Produces`, be sure to check the package, you are importing from.
+It should be either `javax.enterprise.inject.Produces` or `jakarta.enterprise.inject.Produces`.
+You must be careful not to confuse it with `javax.ws.rs.Produces`/`jakarta.ws.rs.Produces`, as you already know that this annotation is used to describe the return type for JAX-RS, whcih has nothing to do with CDI producers.
+
+<.> Each producer method should have a scope, so CDI can decide what instance to create for the injection point.
+The reason we use `@Dependant` scope here is because in order to be able to get the data of that injection point, hence the name of the parameter `InjectionPoint`, we need to have this scope on our producer.
+
+<.> We are able to read the current value of the annotation of the injection point.
+You will see in the example below how we can use it later.
+
+Now that our provider is implemented, we can add it to the `ArticleDecorator` class like that:
+
+[source,java]
+----
+@Decorator
+public abstract class ArticleDecorator implements ArticleService {
+
+    @Inject
+    @Delegate
+    ArticleService articleService;
+
+    @Inject <.>
+    @Gold(limit = 10) <.>
+    List<Advertiser> goldAdvertisers;
+
+    @Override
+    public Optional<Article> getArticle(long articleId) {
+        return articleService.getArticle(articleId)
+                .map(this::decorateArticle);
+    }
+
+    private Article decorateArticle(Article article) {
+        var message = String.format("\nThis article has been sponsored by: %s",
+                goldAdvertisers.stream().map(a -> a.name).collect(Collectors.joining(", "))); <.>
+        var decoratedArticle = new Article(article.title, article.content + message, article.author);
+        decoratedArticle.id = article.id;
+        return decoratedArticle;
+    }
+}
+----
+<.> When we want to call a producer, engaged with an anontation, we always use the `Inject` annotation.
+This is the way CDI will know what to look for.
+<.> As we defined, we can optionally set a limit to our results.
+So when it comes to the execution of the producer, it will take this value into account.
+<.> When it comes to the implementation of the decorator, we can use the instance of `goldAdvertisers` as any other object ot type list.
+We rely that CDI has successfully produced the data required.

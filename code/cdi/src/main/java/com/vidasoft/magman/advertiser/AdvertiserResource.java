@@ -1,5 +1,6 @@
 package com.vidasoft.magman.advertiser;
 
+import com.vidasoft.magman.advertiser.decorators.AdvertiserMapper;
 import com.vidasoft.magman.model.Advertiser;
 
 import javax.annotation.PostConstruct;

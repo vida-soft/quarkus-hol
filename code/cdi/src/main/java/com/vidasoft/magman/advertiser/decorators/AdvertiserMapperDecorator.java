@@ -1,5 +1,6 @@
-package com.vidasoft.magman.advertiser;
+package com.vidasoft.magman.advertiser.decorators;
 
+import com.vidasoft.magman.advertiser.AdvertiserDTO;
 import com.vidasoft.magman.model.Advertiser;
 
 import javax.decorator.Decorator;
