@@ -1085,7 +1085,7 @@ public @interface Bronze {
 <.> We are defining a constant which we are later going to use later for our implementation.
 
 <.> The `@Nonbinding` annotation tells CDI not to compare the value, that might be set to it, with the annotation, which the producer will expect.
-If this annotation is not present, our producer woruld not work, as it will try to search for matching annotation that has `@Gold(limit = 2)` annotation for example.
+If this annotation is not present, our producer would not work, as it will try to search for matching annotation that has `@Gold(limit = 2)` annotation for example.
 
 Now it's time to go back to the `AdvertiserProducer` and implement the methods.
 
@@ -1128,7 +1128,7 @@ public class AdvertiserProducer {
 
 }
 ----
-<.> We use our qualifier annotation to help CDI choose which metho to call.
+<.> We use our qualifier annotation to help CDI choose which method to call.
 This is mandatory, when there's more than one option to provide instance of a class.
 
 <.> This annotation tells CDI that this is a producer method.
@@ -1136,7 +1136,7 @@ It is invoked when the annotation above is used with `@Inject` within the defini
 +
 CAUTION: When you import `@Produces`, be sure to check the package, you are importing from.
 It should be either `javax.enterprise.inject.Produces` or `jakarta.enterprise.inject.Produces`.
-You must be careful not to confuse it with `javax.ws.rs.Produces`/`jakarta.ws.rs.Produces`, as you already know that this annotation is used to describe the return type for JAX-RS, whcih has nothing to do with CDI producers.
+You must be careful not to confuse it with `javax.ws.rs.Produces`/`jakarta.ws.rs.Produces`, as you already know that this annotation is used to describe the return type for JAX-RS, which has nothing to do with CDI producers.
 
 <.> Each producer method should have a scope, so CDI can decide what instance to create for the injection point.
 The reason we use `@Dependant` scope here is because in order to be able to get the data of that injection point, hence the name of the parameter `InjectionPoint`, we need to have this scope on our producer.
@@ -1174,9 +1174,233 @@ public abstract class ArticleDecorator implements ArticleService {
     }
 }
 ----
-<.> When we want to call a producer, engaged with an anontation, we always use the `Inject` annotation.
+<.> When we want to call a producer, engaged with an annotation, we always use the `Inject` annotation.
 This is the way CDI will know what to look for.
 <.> As we defined, we can optionally set a limit to our results.
 So when it comes to the execution of the producer, it will take this value into account.
 <.> When it comes to the implementation of the decorator, we can use the instance of `goldAdvertisers` as any other object ot type list.
 We rely that CDI has successfully produced the data required.
+
+==== Alternatives
+
+When going through different implementations of the same class, there will be a point where you will need to create more than just one implementation.
+In this type of scenario, you will need to use the power of alternatives.
+The most common scenario where you will need an alternative will be within a test environment.
+
+For example if you have a service which requires external actions such as contacting remote service or executing actions, depending on real live environments, such as payment service, which needs to connect to a payment provider.
+When you need to test that service you could create an alternative implementation, annotating it with `@Alternative`, which mocks the invocation of the real instance.
+To find our more about alternatives, https://www.baeldung.com/java-ee-cdi#5-the-default-and-alternative-annotations[read this article].
+
+=== Events and Observers
+
+In our final feature of CDI, we are going to talk about Events and Observers.
+With CDI, you can achieve event-driven development, while implementing the event-observer pattern into you code.
+Let's see an example, how we can achieved this in our code.
+
+When a subscriber wants to extend their subscription, we usually need to charge them some amount of money in order to allow them to keep using our magazine manager.
+In order to do so, we will need to create some form of subscription resource.
+And that's what we are going to do...
+
+- Create the class `subscription.SubscriptionResource`
+- Add endpoints, such as:
+* `PUT /subscription/{userId}` - adds/updates payment method to the subscriber
+* `POST /subscription/{userId}` - updates subscriber's subscription for a certain period
+- Create a `PaymentService, which is going to process payments`
+
+At the end you should have something like this:
+
+[source,java]
+----
+@RequestScoped
+@Path("subscription")
+public class SubscriptionResource {
+
+    @Inject
+    PaymentService paymentService;
+
+    @PUT
+    @Transactional
+    @Path("{userId}")
+    @Consumes(MediaType.APPLICATION_JSON)
+    public Response addPaymentMethod(@PathParam("userId") Long userId, CreditCardDTO creditCardDTO) {
+        if (userId == null || userId < 0) {
+            return Response.status(Response.Status.BAD_REQUEST).build();
+        }
+
+        if (creditCardDTO.getType() == null || creditCardDTO.getNumber() == null) {
+            return Response.status(Response.Status.BAD_REQUEST).build();
+        }
+
+        CreditCard creditCard = new CreditCard(creditCardDTO.getNumber(), creditCardDTO.getType());
+        return Subscriber.<Subscriber>findByIdOptional(userId)
+                .stream().peek(s -> s.creditCard = creditCard)
+                .findFirst().map(s -> Response.status(Response.Status.NO_CONTENT).build())
+                .orElseGet(() -> Response.status(Response.Status.NOT_FOUND).build());
+    }
+
+    @POST
+    @Path("{userId}")
+    public Response chargeSubscriber(@PathParam("userId") Long userId) {
+        if (userId == null || userId < 0) {
+            return Response.status(Response.Status.BAD_REQUEST).build();
+        }
+
+        return Subscriber.<Subscriber>findByIdOptional(userId)
+                .map(paymentService::chargeSubscriber)
+                .map(result -> result? Response.status(Response.Status.NO_CONTENT).build() : Response.status(Response.Status.NOT_ACCEPTABLE).build())
+                .orElseGet(() -> Response.status(Response.Status.NOT_FOUND).build());
+    }
+}
+
+@ApplicationScoped
+public class PaymentService {
+
+    private static final Logger LOGGER = Logger.getLogger(PaymentService.class.getName());
+
+    boolean chargeSubscriber(Subscriber subscriber) {
+        if (subscriber.creditCard != null) {
+            LOGGER.log(Level.INFO, "Charging subscriber with id: {0}  and card type {1} of number: {2}",
+                    new Object[]{subscriber.id, subscriber.creditCard.creditCardType, subscriber.creditCard.number});
+
+            return true;
+        }
+
+        return false;
+    }
+
+}
+----
+
+Here we are not going to implement the real thing, let's say that we just check if the user has credit card linked, and we log that we have charged them.
+As you can see we don't have the most important part of the subscription renewal - updating the expiration date.
+In practice some actions such as renewing a subscription would trigger more than one operation in action. For example you need to update the user's subscription expiration date, send email to the user with confirmation and receipt, send notification to the manager that a user has renewed their subscription, and so on.
+ +
+We can't put all of these side operations into the `chargeSubscriber()` method.
+It would kill the purpose of the name of this method, which is to only charge the subscriber.
+It doesn't say email subscriber, extend expiration to the subscriber, notify that person & etc.
+Those type of side actions occur upon a certain event.
+And CDI offers a way to handle events occurring outside the scope of the `chargeSubscriber` method.
+
+First create an annotation, called `@ChargedSubscriber` in the subscription package:
+
+[source,java]
+----
+@Qualifier
+@Retention(RUNTIME)
+@Target({METHOD, FIELD, PARAMETER, TYPE})
+public @interface ChargedSubscriber {
+}
+----
+
+Then let's add couple of handlers which are going to handle this event.
+
+[source,java]
+----
+public class SubscriptionExtensionHandler {
+
+    private static final Logger LOGGER = Logger.getLogger(SubscriptionExtensionHandler.class.getName());
+
+    @Transactional
+    @ActivateRequestContext <1>
+    public void observeSubscriptionExtension(@Observes @ChargedSubscriber Subscriber subscriber) { <2>
+        subscriber.subscribedUntil = subscriber.subscribedUntil.plusYears(1);
+        LOGGER.log(Level.INFO, "Extended subscription for user {0}, till {1}",
+                List.of(subscriber.id, subscriber.subscribedUntil.toString()).toArray());
+    }
+
+    public void sendEmail(@Observes @ChargedSubscriber Subscriber subscriber) { <2>
+        LOGGER.log(Level.INFO, "Sent email to subscriber {0}, about their subscription renewal.", subscriber.id);
+    }
+
+}
+----
+<.> Events might get invoked outside a request context.
+The request context is fired upon request and transactional methods can run only within it, meaning that if the context is not present, `@Transactional` may not work.
+To make sure that we are running in a `@Transactional` method, we need to add `@ActivateRequestContext` annotation, which will ensure the request context on the
+
+<.> With the `@Observes` annotation we are signalling CDI to listen for the occurrence ot an event being fired.
+Then we use our newly made annotation, which specifies in which scenarios those methods should be invoked.
+The object we pass as an argument, also known as the event payload, is the object we are expecting to get when the event is fired.
+
+NOTE: Making the annotation for an event is optional.
+You could create events and fire them without annotation, but in this occasion you may also fire event listeners which you might not know of, that also are listening for that event.
+
+Next in order to fire those events upon making a payment, we need to update our payment service.
+
+[source,java]
+----
+@ApplicationScoped
+public class PaymentService {
+
+    private static final Logger LOGGER = Logger.getLogger(PaymentService.class.getName());
+
+    @Inject <.>
+    @ChargedSubscriber <.>
+    Event<Subscriber> onSubscriberCharged; <.>
+
+    boolean chargeSubscriber(Subscriber subscriber) {
+        if (subscriber.creditCard != null) {
+            LOGGER.log(Level.INFO, "Charging subscriber with id: {0}  and card type {1} of number: {2}",
+                    new Object[]{subscriber.id, subscriber.creditCard.creditCardType, subscriber.creditCard.number});
+
+            onSubscriberCharged.fire(subscriber); <.>
+            return true;
+        }
+
+        return false;
+    }
+
+}
+----
+
+<.> As any other CDI managed dependency, in order to signal the server that this property is CDI managed, we need to use the `@Inject` annotation.
+<.> To deffer which type of event handlers we are going to call, we add our annotation here.
+It's important to mention that if we do not add the annotation, our handlers won't get called.
+<.> The we define our event with the type of payload we are going to pass. Here we use `javax.enterprise.event.Event` or `jakarta.enterprise.event.Event`, depending on your flavour of enterprise edition of Java.
+<.> To fire the event, we simply call the `.fire()` method, passing the instance of our payload.
+
+Let's test that and see the results with a user we previously created.
+
+[source,curl]
+----
+curl --location --request POST 'http://localhost:8080/subscription/7'
+----
+
+Now it you look at the logs, you will find the following:
+
+[source,log]
+----
+2022-09-27 13:23:18,965 INFO  [com.vid.mag.sub.PaymentService] (executor-thread-0) Charging subscriber with id: 7  and card type VISA of number: 3698521479
+2022-09-27 13:23:18,973 INFO  [com.vid.mag.sub.SubscriptionExtensionHandler] (executor-thread-0) Extended subscription for user 7, till 2025-01-12
+2022-09-27 13:23:18,973 INFO  [com.vid.mag.sub.SubscriptionExtensionHandler] (executor-thread-0) Sent email to subscriber 7, about their subscription renewal.
+----
+
+Now this is great, and it seems that the order of invocations are working as expected, but what if we want to flip things around?
+What if we want to first send an email to the user, then update the entity?
+ +
+This could be done with the `@javax/jakarta.annotation.Priority` annotation:
+
+[source,java]
+----
+    @Transactional
+    @ActivateRequestContext
+    public void observeSubscriptionExtension(@Priority(Priorities.APPLICATION + 2000) @Observes @ChargedSubscriber Subscriber subscriber) {
+        subscriber.subscribedUntil = subscriber.subscribedUntil.plusYears(1);
+        LOGGER.log(Level.INFO, "Extended subscription for user {0}, till {1}",
+                List.of(subscriber.id, subscriber.subscribedUntil.toString()).toArray());
+    }
+
+    public void sendEmail(@Priority(Priorities.APPLICATION + 1000) @Observes @ChargedSubscriber Subscriber subscriber) {
+        LOGGER.log(Level.INFO, "Sent email to subscriber {0}, about their subscription renewal.", subscriber.id);
+    }
+----
+
+- `APPLICATION` priority, marks the priority of invocations of interceptors, defined by user applications.
+When defining a priority, it is recommended to start with that priority.
+- Setting the priority will be a sum of a number and that `APPLICATION` priority value (5000).
+The method lower priotity will be executed first.
+
+=== Conclusion
+
+This concludes the basics of using CDI within Quarkus.
+In the next chapter, we are going to get rid of all those checks on requests, by implementing bean validation.
