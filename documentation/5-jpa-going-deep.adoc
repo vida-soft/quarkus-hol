@@ -36,7 +36,7 @@ At the end our endpoint should look like this:
     @Transactional
     @Consumes(MediaType.APPLICATION_JSON)
     public Response createComment(@PathParam("id") Long articleId, CommentDTO commentDTO) {
-        if (articleId == null || articleId < 1 || commentDTO.getAuthorId() == null || commentDTO.getAuthorId() < 1) {
+        if (articleId < 1 || commentDTO.getAuthorId() == null || commentDTO.getAuthorId() < 1) {
             return Response.status(Response.Status.BAD_REQUEST).build();
         }
 
@@ -161,7 +161,7 @@ And at the end our `getArticle` implementation will look like this
 [source,java]
 ----
     public Response getArticle(@PathParam("id") Long articleId, @QueryParam("withComments") boolean withComments) {
-        if (articleId == null) {
+        if (articleId < 1) {
             return Response.status(Response.Status.BAD_REQUEST).build();
         }
 
@@ -304,7 +304,7 @@ And finally, let's implement our `getComment` endpoint:
     @Path("/{commentId}")
     @Produces(MediaType.APPLICATION_JSON)
     public Response getCommentById(@PathParam("commentId") Long commentId) {
-        if (commentId == null || commentId < 1) {
+        if (commentId < 1) {
             return Response.status(Response.Status.BAD_REQUEST).build();
         } else {
             Object[] commentResult = (Object[]) Comment.getEntityManager().createNamedQuery(Comment.GET_COMMENT_BY_ID) <.>
@@ -371,7 +371,7 @@ Now when we go back to our `CommentResource` our `getComment` implementation may
     @Path("/{commentId}")
     @Produces(MediaType.APPLICATION_JSON)
     public Response getCommentById(@PathParam("commentId") Long commentId) {
-        if (commentId == null || commentId < 1) {
+        if (commentId < 1) {
             return Response.status(Response.Status.BAD_REQUEST).build();
         } else {
             CommentDTO comment = Comment.getEntityManager().createNamedQuery(Comment.GET_COMMENT_BY_ID, CommentDTO.class)

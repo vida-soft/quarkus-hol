@@ -50,7 +50,7 @@ Then, let's touch our methods a bit...
     @Path("/{id}")
     @Produces(MediaType.APPLICATION_JSON)
     public Response getAuthor(@PathParam("id") Long authorId) {
-        if (authorId == null || authorId < 0) {
+        if (authorId < 1) {
             return Response.status(Response.Status.BAD_REQUEST).build();
         } else {
             Author author = Author.findById(authorId); <.>
@@ -74,7 +74,7 @@ Instead of using `findById()`, you can use `findByIdOptional()` and simplify you
 [source,java]
 ----
     public Response getAuthor(@PathParam("id") Long authorId) {
-        if (authorId == null || authorId < 0) {
+        if (authorId < 1) {
             return Response.status(Response.Status.BAD_REQUEST).build();
         } else {
             return Author.<Author>findByIdOptional(authorId) <.>
@@ -124,7 +124,7 @@ As mentioned in our JPA chapter, we don't need to use `.persist()` at all.
 [source,java]
 ----
     public Response editArticle(@PathParam("id") Long articleId, ArticleDTO articleDTO) {
-        if (articleId == null || articleId < 1) {
+        if (articleId < 1) {
             return Response.status(Response.Status.BAD_REQUEST).build();
         }
 

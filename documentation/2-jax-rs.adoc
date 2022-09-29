@@ -44,12 +44,16 @@ Each of those are defining the action you intent to do with the data.
 This helps the server to choose what value to set to the `Content-Type` header, and how to convert the data, passed through the response.
 The value can be set to a method or a class, if all the methods are returning the same response time within it.
 <.> In JAX-RS you have two ways to return a response.
-If your request's response is simple, you can directly set the return value, which will populate the response's body.
-But if you would like to return different types of responses, then you'll have to use `javax.ws.rs.Response` and create your custom responses.
-More of that, later in the chapter.
+If your request's response is simple, you can directly set the return value, which will populate the response's body. But if you would like to return different types of responses, then you'll have to use `javax.ws.rs.Response` and create your custom responses.
+So when you need to return void or an object, `JAX-RS` will behave in the following way:
+
+* When your method returns `void`, the response will be `204 NO CONTENT`.
+* If you return an object, you'll get `200 OK` with either JSON or text as a body, depending on the `@Produces` annotation.
+* Throwing exceptions like `NotFoundException` or `BadRequestException` will respectively result in `404 NOT FOUND` and `400 BAD REQUEST`.
+
 
 WARNING: Using `@Produces` annotation is optional.
-If you forget or intent not to add it, most of the times RestEasy will be able to define the content type automatically.
+If you forget or intent not to add it, most of the times Quarkus will be able to define the content type automatically.
 Despite that it is recommended to use this annotation, because automatic recognition does not work all the time, and you can never know when and for what reason it will fail.
 
 === Creating our own endpoints
@@ -125,6 +129,12 @@ public class ArticleDTO {
 }
 ----
 
+TIP: With Java 14 and later you can use records, instead of POJOs, which will free you up from some boilerplating.
+This will make definitions of DTOs more clean and straightforward.
+Do keep in mind though, that records are immutable and they don't support inheritance, meaning that you'll have to define the same properties for common classes and won't be able to change a property's content, once it's been set.
+Read more about records https://docs.oracle.com/en/java/javase/15/language/records.html[here].
+
+
 You may have noticed that your IDE is signalling for error when you defined `@Path` on the `ArticleResource` class.
 This is because there are no endpoints defined for that resource.
 Let's create our first endpoint:
@@ -148,9 +158,12 @@ public class ArticleResource {
 }
 ----
 <.> We are going to use a Map to store all of our articles.
+In the next chapter we will introduce database for this purpose.
+
 <.> The `@Consumes` annotation defines what type of data we are going to pass to the request's body.
 It has similar behavior as `@Produces`.
 If the annotation isn't used RestEasy will use whatever type is defined in the `Accept` header of the request.
+
 <.> Here we use `javax.ws.rs.Response` to return a custom response to the client `201 CREATED`.
 This response is the most appropriately accepted when creating new entities.
 It is specified to contain a path for `GET` requests regarding that entity.
@@ -213,7 +226,7 @@ public class ArticleResource {
     @Path("/{id}") <.>
     @Produces(MediaType.APPLICATION_JSON)
     public Response getArticle(@PathParam("id") Long articleId) { <.>
-        if (articleId == null) {
+        if (articleId < 1>) {
             return Response.status(Response.Status.BAD_REQUEST).build(); <.>
         } else if(articles.get(articleId) == null) {
             return Response.status(Response.Status.NOT_FOUND).build(); <.>
@@ -275,7 +288,7 @@ public class ArticleResource {
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
     public Response editArticle(@PathParam("id") Long articleId, ArticleDTO article) {
-        if (articleId == null || !articleId.equals(article.getId())) {
+        if (articleId < 1 || !articleId.equals(article.getId())) {
             return Response.status(Response.Status.BAD_REQUEST).build();
         } else if (articles.get(articleId) == null) {
             return Response.status(Response.Status.NOT_FOUND).build();
@@ -367,8 +380,8 @@ As a response you will see a JSON array with all the articles you have created.
 
 ==== Creating a custom request
 
-Currently we are able to create articles, get articles, update articles and delete articles.
-That's great! We have all the crud operations, needed to perform basic actions for our articles.
+Currently we are able to create, get, update and delete articles.
+That's great! We have all the CRUD operations, needed to perform basic actions for our articles.
 But there's one issue with that method getting all the articles.
 When we call it, we are going to get either all articles or no articles, in the case where no articles have been created.
 In a situation where we have 1000 articles, this wouldn't be useful, would it?

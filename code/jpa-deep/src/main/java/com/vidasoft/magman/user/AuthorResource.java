@@ -32,7 +32,7 @@ public class AuthorResource {
     @Path("/{id}")
     @Produces(MediaType.APPLICATION_JSON)
     public Response getAuthor(@PathParam("id") Long authorId) {
-        if (authorId == null || authorId < 0) {
+        if (authorId < 1) {
             return Response.status(Response.Status.BAD_REQUEST).build();
         } else {
             return Author.<Author>findByIdOptional(authorId)

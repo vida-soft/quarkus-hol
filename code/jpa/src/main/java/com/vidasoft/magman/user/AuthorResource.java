@@ -39,7 +39,7 @@ public class AuthorResource {
     @Path("/{id}")
     @Produces(MediaType.APPLICATION_JSON)
     public Response getAuthor(@PathParam("id") Long authorId) {
-        if (authorId == null || authorId < 0) {
+        if (authorId < 1 || authorId < 0) {
             return Response.status(Response.Status.BAD_REQUEST).build();
         } else {
             Author author = entityManager.find(Author.class, authorId);

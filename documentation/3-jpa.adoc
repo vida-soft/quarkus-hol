@@ -3,7 +3,7 @@
 One of the core functions of an application server is being to work with a database.
 Functions as extracting data from the database, adding or removing data on demand are crucial to all business oriented web applications.
 
-We'll start our journey into building a magazine manager web application with setting up its data model.
+We'll continue our journey into building a magazine manager web application with setting up its data model.
 The standard way to do that and to then persist the modelled data is with the Java Persistence API (JPA).
 
 .JPA Terminology
@@ -60,25 +60,9 @@ Let's first go to our `pom.xml` and see what we have in our `<dependencies>` blo
 
 As you can see we have three dependencies, that are included when the application has started, and two more with `<scope>test</scope>`, which are involved only while running tests.
 
-.Looking through our dependencies
-*****************************************
-*quarkus-arc* is an extension that implements the CDI 2.0 specification.
-it is built and optimized according to the standards of the Quarkus application framework and server, to provide better and robust dependency injection into the project. You can find more about quarkus arc https://quarkus.io/blog/quarkus-dependency-injection/[here].
-
-*quarkus-resteasy* is the extension, responsible for enabling the JAX-RS functionality inside quarkus.
-It provides all the annotations needed to create REST endpoints for processing requests from the client and giving back responses.
-
-*quarkus-resteasy-jsonb* - this extension is used to quickly serialize/deserialize JSON objects from and to Java objects.
-Most REST applications pass data through JSON, and JsonB is a library suitable to convert those to Java objects (POJOs) implicitly.
-
-*quarkus-junit5* is an implementation of jUnit5, providing all the APIs for the jUnit testing framework.
-
-*rest-assured* will provide APIs that allow easy testing for rest endpoints, using functional interfaces.
-*****************************************
-
 In order to work with a database, we will need to add a couple of extensions to our project:
 
-- *quarkus-hibernate-orm-panache* - will allow to use Hibernate's JPA implementation, along with Quarkus' Panache, which is a code sugar API, adding all the needed CRUD operations to the entities.
+- *quarkus-hibernate-orm* - will allow to use Hibernate's JPA implementation.
 - *quarkus-jdbc-h2* - the database driver, used to communicate with the database using Hibernate's APIs
 
 NOTE: We'll use H2 as embedded database in this installment of our series.
@@ -87,7 +71,7 @@ To add extensions to quarkus, simply execute the following command in the termin
 
 [source,shell]
 ----
-mvn quarkus:add-extension -Dextensions="io.quarkus:quarkus-hibernate-orm-panache, io.quarkus:quarkus-jdbc-h2"
+mvn quarkus:add-extension -Dextensions="io.quarkus:quarkus-hibernate-orm, io.quarkus:quarkus-jdbc-h2"
 ----
 
 Now if you open `pom.xml`, you'll see that we have two new dependencies added to the list:
@@ -101,7 +85,7 @@ Now if you open `pom.xml`, you'll see that we have two new dependencies added to
 
     <dependency>
       <groupId>io.quarkus</groupId>
-      <artifactId>quarkus-hibernate-orm-panache</artifactId>
+      <artifactId>quarkus-hibernate-orm</artifactId>
     </dependency>
 ----
 
@@ -193,17 +177,20 @@ Next important thing is to define a property for `id`, which will be our primary
 ----
 public class User {
 
-    @Id <1>
-    @GeneratedValue(strategy = GenerationType.AUTO) <2>
+    @Id <.>
+    @GeneratedValue(strategy = GenerationType.AUTO) <.>
     public long id;
 }
 ----
-<1> `Id` annotation tells JPA that this property maps the id column of the table. 
-<2> `GeneratedValue` is an annotation, that tells Hibernate how to handle id generation for new entities.
+<.> `Id` annotation tells JPA that this property maps the id column of the table. 
+<.> `GeneratedValue` is an annotation, that tells Hibernate how to handle id generation for new entities.
 In this example `GenerationType.AUTO`, would tell Hibernate or any other ORM implementation to handle Id generation with its default setting four auto generation.
-The most common approach is generating a special table, that keeps track of the last id used and assign the next one to the entity.
+The most common approach is generating a database object, called sequence, which keeps track of the last id used and assign the next one to the entity.
 
-One of the things we also need do decide during database modeling is how do we want the database to behave, when two or more people are trying to access the database.
+NOTE: You may be tempted to encapsulate the properties with getters and setters, but hold on for a minute and think about why?
+When we are trying to access/modify the properties of our variables, we are always going to get or set the exact values we want to assign, so using getters and setters is not necessary in such scenario.
+
+One of the things we also need do decide during database modeling is how do we want the database to behave, when two or more people are trying to access it.
 Do we want the access to be one user at a time, or do we want all users to have access at any time.
 This decision is usually based on how strict we want to be on database integrity, and how crucial is that to the project.
 The procedure we use to control that access is called locking.
@@ -211,7 +198,7 @@ The procedure we use to control that access is called locking.
 .Optimistic vs pessimistic locking
 *****************************************
 When the access to the database is limited to one user at a time, we use the term *pessimistic locking*.
-This means that when a user performs `SELECT`, `INSERT`, `UPDATE`, `DELETE` & etc. operations, other users are not allowed to access the database, and will have to wait for the initial operations to finish.
+This means that when a user performs `SELECT`, `INSERT`, `UPDATE`, `DELETE`, etc. operations, other users are not allowed to access the database, and will have to wait for the initial operations to finish.
 This type of locking guarantees that everyone is working with the most recent and up to date data and prevents conflicts, where two users might be editing the same table or column.
 
 The other most commonly used method is called *optimistic locking*.
@@ -769,7 +756,7 @@ content-length: 0
 - `@Transactional` can be used on method and on a class level.
 Using `@Transactional` on a class level is recommended only if all the methods in your class should be transactional.
 - Queries that read from the database do not need to be transactional, hence they do not require the `@Transactional` annotation.
-You need to use `@Transactional` only on methods, that induce changes on the database.
+You need to use `@Transactional` only on methods, that induce changes on the database or when you need a high level of consistency when reading data to make sure nobody is changing it while you read it. 
 ====
 
 To make sure that our author exists, let's create a query to get it from the database.
@@ -835,7 +822,7 @@ public class AuthorResource {
     @Path("/{id}")
     @Produces(MediaType.APPLICATION_JSON)
     public Response getAuthor(@PathParam("id") Long authorId) {
-        if (authorId == null || authorId < 0) {
+        if (authorId < 1) {
             return Response.status(Response.Status.BAD_REQUEST).build();
         } else {
             Author author = entityManager.find(Author.class, authorId);
@@ -981,7 +968,7 @@ So let's get articles from our database instead.
     @Path("/{id}")
     @Produces(MediaType.APPLICATION_JSON)
     public Response getArticle(@PathParam("id") Long articleId) {
-        if (articleId == null) {
+        if (articleId < 1>) {
             return Response.status(Response.Status.BAD_REQUEST).build();
         }
 
@@ -1132,7 +1119,7 @@ Continuing out progress, let's see how an article is updated.
     @Produces(MediaType.APPLICATION_JSON)
     @Transactional
     public Response editArticle(@PathParam("id") Long articleId, ArticleDTO articleDTO) {
-        if (articleId == null || articleId < 1) {
+        if (articleId < 1) {
             return Response.status(Response.Status.BAD_REQUEST).build();
         }
 

@@ -48,7 +48,7 @@ public class ArticleResource {
     @Path("/{id}")
     @Produces(MediaType.APPLICATION_JSON)
     public Response getArticle(@PathParam("id") Long articleId, @QueryParam("withComments") boolean withComments) {
-        if (articleId == null) {
+        if (articleId < 1) {
             return Response.status(Response.Status.BAD_REQUEST).build();
         }
 
@@ -89,7 +89,7 @@ public class ArticleResource {
     @Produces(MediaType.APPLICATION_JSON)
     @Transactional
     public Response editArticle(@PathParam("id") Long articleId, ArticleDTO articleDTO) {
-        if (articleId == null || articleId < 1) {
+        if (articleId < 1) {
             return Response.status(Response.Status.BAD_REQUEST).build();
         }
 
