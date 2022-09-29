@@ -26,7 +26,7 @@ public class SubscriptionResource {
     @Path("{userId}")
     @Consumes(MediaType.APPLICATION_JSON)
     public Response addPaymentMethod(@PathParam("userId") Long userId, CreditCardDTO creditCardDTO) {
-        if (userId == null || userId < 0) {
+        if (userId < 1) {
             return Response.status(Response.Status.BAD_REQUEST).build();
         }
 
@@ -44,7 +44,7 @@ public class SubscriptionResource {
     @POST
     @Path("{userId}")
     public Response chargeSubscriber(@PathParam("userId") Long userId) {
-        if (userId == null || userId < 0) {
+        if (userId < 1) {
             return Response.status(Response.Status.BAD_REQUEST).build();
         }
 

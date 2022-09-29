@@ -552,7 +552,7 @@ public class CommentResource {
     @Transactional
     @Consumes(MediaType.APPLICATION_JSON)
     public Response createComment(@PathParam("id") Long articleId, CommentDTO commentDTO) {
-        if (articleId == null || articleId < 1 || commentDTO.getAuthorId() == null || commentDTO.getAuthorId() < 1) {
+        if (articleId < 1 || commentDTO.getAuthorId() == null || commentDTO.getAuthorId() < 1) {
             return Response.status(Response.Status.BAD_REQUEST).build();
         }
 
@@ -575,7 +575,7 @@ public class CommentResource {
     @Path("/{commentId}")
     @Produces(MediaType.APPLICATION_JSON)
     public Response getCommentById(@PathParam("commentId") Long commentId) {
-        if (commentId == null || commentId < 1) {
+        if (commentId < 1) {
             return Response.status(Response.Status.BAD_REQUEST).build();
         } else {
             return commentService.getCommentById(commentId)
@@ -864,7 +864,7 @@ public class ArticleResource {
     @Path("/{id}")
     @Produces(MediaType.APPLICATION_JSON)
     public Response getArticle(@PathParam("id") Long articleId) {
-        if (articleId == null) {
+        if (articleId < 1) {
             return Response.status(Response.Status.BAD_REQUEST).build();
         }
 
@@ -983,7 +983,7 @@ public class ArticleResource {
     @Transactional
     @Path("{id}/advertiser/{advertiserId}")
     public Response addAdvertiserToArticle(@PathParam("id") Long id, @PathParam("advertiserId") Long advertiserId) {
-        if (id == null || advertiserId == null) {
+        if (id < 1 || advertiserId < 1) {
             return Response.status(Response.Status.BAD_REQUEST).build();
         }
 
@@ -1223,7 +1223,7 @@ public class SubscriptionResource {
     @Path("{userId}")
     @Consumes(MediaType.APPLICATION_JSON)
     public Response addPaymentMethod(@PathParam("userId") Long userId, CreditCardDTO creditCardDTO) {
-        if (userId == null || userId < 0) {
+        if (userId < 1) {
             return Response.status(Response.Status.BAD_REQUEST).build();
         }
 
@@ -1241,7 +1241,7 @@ public class SubscriptionResource {
     @POST
     @Path("{userId}")
     public Response chargeSubscriber(@PathParam("userId") Long userId) {
-        if (userId == null || userId < 0) {
+        if (userId < 1) {
             return Response.status(Response.Status.BAD_REQUEST).build();
         }
 

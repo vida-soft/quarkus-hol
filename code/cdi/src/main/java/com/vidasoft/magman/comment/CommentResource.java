@@ -30,7 +30,7 @@ public class CommentResource {
     @Transactional
     @Consumes(MediaType.APPLICATION_JSON)
     public Response createComment(@PathParam("id") Long articleId, CommentDTO commentDTO) {
-        if (articleId == null || articleId < 1 || commentDTO.getAuthorId() == null || commentDTO.getAuthorId() < 1) {
+        if (articleId < 1 || commentDTO.getAuthorId() == null || commentDTO.getAuthorId() < 1) {
             return Response.status(Response.Status.BAD_REQUEST).build();
         }
 
@@ -53,7 +53,7 @@ public class CommentResource {
     @Path("/{commentId}")
     @Produces(MediaType.APPLICATION_JSON)
     public Response getCommentById(@PathParam("commentId") Long commentId) {
-        if (commentId == null || commentId < 1) {
+        if (commentId < 1) {
             return Response.status(Response.Status.BAD_REQUEST).build();
         } else {
             return commentService.getCommentById(commentId)
