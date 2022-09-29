@@ -1,0 +1,215 @@
+== Bean validation
+
+This chapter is dedicated to figuring out a better way to validate our requests and the data we pass from one service to another overall.
+Jakarta EE specifies annotations, used to validate data.
+So instead of you making those checks upon each and every request, there are annotations specifically made for that purpose.
+As we are always mentioning a method should have a single responsibility.
+Having to check the integrity and correctness of the data kind of invalidates that purpose.
+The way to achieve this is through Bean Validation.
+
+NOTE: As mentioned earlier "_bean_" in Java Enterprise world is interchangeable word for CDI managed dependency.
+
+=== Integrating bean validation to our project.
+
+Just like any other Jakarta EE specification, the annotations for bean validation are just interfaces, provided by the community, and implemented by web server providers.
+This means that we have to use the extension with which Quarkus allows bean validation for your project.
+Since the extension is not provided into our project, we first need to install it, like we did for JPA.
+
+[source,shell]
+----
+mvn quarkus:add-extension -Dextensions="io.quarkus:quarkus-hibernate-validator"
+----
+
+After the operation has succeeded, we are going to find a new dependency in our pom.xml.
+
+[source,xml]
+----
+    <dependency>
+      <groupId>io.quarkus</groupId>
+      <artifactId>quarkus-hibernate-validator</artifactId>
+    </dependency>
+----
+
+=== Using bean validation annotations
+
+Once start our project, after importing the bean validation extension, it will be on and will start looking for properties with annotations, using the spec.
+Since the previous chapter, you should have the knowledge how day work (it's interceptors 😉).
+
+Now it is time to introduce our project to these annotations.
+Let's start with the `ArticleResource`, our first resource ever.
+
+==== Configuring bean validations REST resources
+
+Our method for getting article by id, might currently look like this:
+
+[source,java]
+----
+    @GET
+    @Path("/{id}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getArticle(@PathParam("id") Long articleId) {
+        if (articleId == null) {
+            return Response.status(Response.Status.BAD_REQUEST).build();
+        }
+
+        return articleService.getArticle(articleId)
+                .map(article -> Response.ok(new ArticleDTO(article)).build())
+                .orElseGet(() -> Response.status(Response.Status.NOT_FOUND).build());
+    }
+----
+
+Depending on your implementations, you might have more checks, like for example checking if the id is not less than 1 or something else.
+What's important is that we need at least two checks here:
+
+- The passed article id should not be null
+- The past article id should be of a positive number (greater than zero)
+
+To achieve that, we simply need to add `@Positive` next to, or before, the `@PathParam` annotation, like so:
+
+[source,java]
+----
+public Response getArticle(@Positive @PathParam("id") Long articleId) {...} <.>
+----
+<.> All bean validation annotations come from the `javax/jakarta.validation.constraints` package.
+
+Then we can get rid of the check within the method's implementation.
+
+[source,java]
+----
+    public Response getArticle(@Positive @PathParam("id") Long articleId) {
+        return articleService.getArticle(articleId)
+                .map(article -> Response.ok(new ArticleDTO(article)).build())
+                .orElseGet(() -> Response.status(Response.Status.NOT_FOUND).build());
+    }
+
+----
+
+Now let's try it!
+First, let's call for a real article and make sure hat the expected outcome is still working:
+
+[source,curl]
+----
+curl -i --location --request GET 'http://localhost:8080/article/3'
+----
+
+[source,json]
+----
+HTTP/1.1 200 OK
+Content-Type: application/json
+content-length: 147
+
+{"authorId":1,"content":"The quick brown fox runs over the lazy dog.\nThis article has been sponsored by: ","id":3,"title":"Article for the soul."}
+----
+
+Good! Now let's try some invalid input:
+
+[source,curl]
+----
+curl -i --location --request GET 'http://localhost:8080/article/-3'
+----
+
+What do you get?
+
+If your response is:
+
+[source,json]
+----
+HTTP/1.1 400 Bad Request
+validation-exception: true
+Content-Type: application/json
+content-length: 206
+
+{
+    "classViolations": [],
+    "parameterViolations": [
+        {
+            "constraintType": "PARAMETER",
+            "message": "must be greater than 0",
+            "path": "getArticle.articleId",
+            "value": "-3"
+        }
+    ],
+    "propertyViolations": [],
+    "returnValueViolations": []
+}
+----
+
+It means that it's working and you're all set.
+
+Now let's apply that knowledge and add some annotations to all of our methods.
+
+[source,java]
+----
+public Response createArticle(@NotNull ArticleDTO articleDTO) {...}
+
+public Response editArticle(@Positive @PathParam("id") Long articleId, @NotNull ArticleDTO articleDTO) { ... }
+
+public void deleteArticle(@Positive @PathParam("id") Long articleId) { ... }
+
+public Response getArticles(@QueryParam("page") @DefaultValue("1") @Positive int page,
+                                @QueryParam("size") @DefaultValue("10") @Positive int size,
+                                @QueryParam("author") @Positive Long authorId) { ... }
+
+public Response addAdvertiserToArticle(@Positive @PathParam("id") Long id, @Positive @PathParam("advertiserId") Long advertiserId) {...}
+
+----
+
+`@NotNull` is another validation annotation, which as the name suggests makes sure that the data you are passing is not null.
+
+NOTE: Using `@NotNull` checks on a path parameter in practice is useless, as there is no way to pass a null path parameter.
+We also needn't check if the input is a number, as RestEasy is deferring letters as another paths.
+
+=== Configuring bean validation on POJOs
+
+We found out how to set bean validations on our resource methods, but what if we want to validate the body we are putting into our query?
+ +
+For example when we create an article, we want to be sure that the article has at least `title` and `content`.
+Other properties, such as publish and modification date, id or author id are not required, as those are properties, given automatically by our application.
+
+So how to we validate out `ArticleDTO`?
+ +
+With annotations!
+
+[source,java]
+----
+public class ArticleDTO {
+
+    private Long id;
+
+    @NotBlank <1>
+    @Size(min = 1, max = 225) <2>
+    private String title;
+
+    @NotBlank <1>
+    @Size(min = 1, max = 10_000) <2>
+    private String content;
+    
+    private String publishDate;
+
+    private String lastModified;
+    private Long authorId;
+
+    private List<CommentDTO> comments;
+
+    // constructors, getters, setters
+}
+----
+<.> With `@NotBlank` annotation, we can check if the property is null or empty.
+<.> With `@Size`, we can add constraints on the size of the content.
+Since we defined into our database that the content of the article will be 10 000 characters at max, we cannot accept an article with more than that.
+
+One final step, to make the bean validation work, is to add `@Valid`, next to the resource we are going to validate the DTO with.
+
+[source,java]
+----
+public class ArticleResource {
+
+    public Response createArticle(@Valid @NotNull ArticleDTO articleDTO) { ... }
+    
+    public Response editArticle(@Positive @PathParam("id") Long articleId, @Valid @NotNull ArticleDTO articleDTO) { ... }
+
+}
+----
+
+NOTE: The `@Valid` annotation works when you want to run validation on object, passed on a resource, or when you want ot validate a nested object within the POJO.
+So for example if our article was supposed to be saved with some comments, and we had some validation annotations on the comments, we would need to put `@Valid` on the comments definition.
