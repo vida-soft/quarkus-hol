@@ -6,8 +6,39 @@ Panache is a programming interface that adds extensions to the entities and allo
 This would make your code look cleaner, better to understand and easier to work with. 
 
 To prove that, let's see it in action.
-If you have followed the previous chapter, you should have Panache already imported to your project.
-Now it is time to upgrade our database entities to use Panache, instead of EntityManager.
+
+But first...
+
+=== Extensions, extensions, extensions
+
+TIP: If you are familiar with Maven, you can avoid the steps below, by just opening the `pom.xml` file and adding `-panache` to `<artifactId>quarkus-hibernate-orm</artifactId>`.
+
+Using Panache is optional for the project.
+You may prefer the old ways and use the entity manager with some DAO (Data Access Object) layerings to call the database, but in order to use Panache, you'll need to add the extension for it.
+
+To add the panache extension, simply execute the following line on your project's folder:
+
+[source,shell]
+----
+mvn quarkus:add-extension -Dextensions="io.quarkus:quarkus-hibernate-orm-panache"
+----
+
+And since this extension comes with hibernate, we can remove the previous `quarkus-hibernate-orm` extension by executing
+
+[source,shell]
+----
+mvn quarkus:remove-extension -Dextensions="io.quarkus:quarkus-hibernate-orm"
+----
+
+Now if we look at the dependencies inside the `pom.xml`, we should be left only with this:
+
+[source,xml]
+----
+    <dependency>
+      <groupId>io.quarkus</groupId>
+      <artifactId>quarkus-hibernate-orm-panache</artifactId>
+    </dependency>
+----
 
 === The `PanacheEntityBase` class
 

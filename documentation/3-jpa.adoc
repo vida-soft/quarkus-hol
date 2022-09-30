@@ -19,48 +19,11 @@ The standard way to do that and to then persist the modelled data is with the Ja
 
 As a start we will need to add the proper configurations and extensions to make our project work with a database.
 
-=== Adding extensions to Quarkus
+=== Adding extensions to support JPA
 
-Quarkus extensions are Maven dependencies which enable the framework to use annotations and functionalities, based on the application's needs.
-These extensions/dependencies can be managed manually from the project's `pom.xml` or we can use the maven cli to add them with a simple one-line command.
+As we mentioned in the beginning, our project will include only the stuff we need, and right now although we have annotations for JPA, they won't work, without the implementations, required to run them. 
 
-Let's first go to our `pom.xml` and see what we have in our `<dependencies>` block.
-
-[source,xml]
-----
-  <dependencies>
-    <dependency>
-      <groupId>io.quarkus</groupId>
-      <artifactId>quarkus-resteasy-jsonb</artifactId>
-    </dependency>
-
-    <dependency>
-      <groupId>io.quarkus</groupId>
-      <artifactId>quarkus-arc</artifactId>
-    </dependency>
-    
-    <dependency>
-      <groupId>io.quarkus</groupId>
-      <artifactId>quarkus-resteasy</artifactId>
-    </dependency>
-    
-    <dependency>
-      <groupId>io.quarkus</groupId>
-      <artifactId>quarkus-junit5</artifactId>
-      <scope>test</scope>
-    </dependency>
-    
-    <dependency>
-      <groupId>io.rest-assured</groupId>
-      <artifactId>rest-assured</artifactId>
-      <scope>test</scope>
-    </dependency>
-  </dependencies>
-----
-
-As you can see we have three dependencies, that are included when the application has started, and two more with `<scope>test</scope>`, which are involved only while running tests.
-
-In order to work with a database, we will need to add a couple of extensions to our project:
+In order to work with a database, we will need to add a couple more extensions to our project:
 
 - *quarkus-hibernate-orm* - will allow to use Hibernate's JPA implementation.
 - *quarkus-jdbc-h2* - the database driver, used to communicate with the database using Hibernate's APIs

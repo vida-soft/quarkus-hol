@@ -248,4 +248,50 @@ We are going to modify our project and change that as we go to serve as a demo p
 - `test` folder as you guessed serves as a folder where our tests will be.
 Here the structure is mirrored to the `main` folder and we can use it to write tests for our application.
 
+=== Adding extensions to Quarkus
+
+Quarkus extensions are Maven dependencies which enable the framework to use annotations and functionalities, based on the application's needs.
+During our project we will add and modify those extensions, for our needs, when we want to enable different Jakarta EE features.
+These extensions/dependencies can be managed manually from the project's `pom.xml` or we can use the maven cli to add them with a simple one-line command.
+
+Let's first go to our `pom.xml` and see what we have in our `<dependencies>` block.
+
+[source,xml]
+----
+  <dependencies>
+    <dependency>
+      <groupId>io.quarkus</groupId>
+      <artifactId>quarkus-resteasy-jsonb</artifactId>
+    </dependency>
+
+    <dependency>
+      <groupId>io.quarkus</groupId>
+      <artifactId>quarkus-arc</artifactId>
+    </dependency>
+    
+    <dependency>
+      <groupId>io.quarkus</groupId>
+      <artifactId>quarkus-resteasy</artifactId>
+    </dependency>
+    
+    <dependency>
+      <groupId>io.quarkus</groupId>
+      <artifactId>quarkus-junit5</artifactId>
+      <scope>test</scope>
+    </dependency>
+    
+    <dependency>
+      <groupId>io.rest-assured</groupId>
+      <artifactId>rest-assured</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+----
+
+These are the extensions we chose to add during our project setup with code.quarkus.io.
+They will enable us to use CDI (with `quarkus-arc`) and JAX-RS (with `quarkus-resteasy`).
+The dependencies with `<scope>test</test>` were automatically added by Quarkus to enable us to write tests for our project, using the extensions we added in the first place.
+
+=== What's next?
+
 In the next chapter we are going to look through our first Jakarta EE specification, the Java Persistence API or JPA for short.
