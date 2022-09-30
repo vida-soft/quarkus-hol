@@ -1,8 +1,13 @@
 package com.vidasoft.magman.user;
 
+import javax.validation.constraints.NotBlank;
+
 public class LoginDTO {
 
+    @NotBlank
     private String userName;
+
+    @NotBlank
     private String password;
 
     public String getUserName() {

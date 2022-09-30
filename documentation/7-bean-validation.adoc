@@ -48,7 +48,7 @@ Our method for getting article by id, might currently look like this:
     @Path("/{id}")
     @Produces(MediaType.APPLICATION_JSON)
     public Response getArticle(@PathParam("id") Long articleId) {
-        if (articleId == null) {
+        if (articleId < 1) {
             return Response.status(Response.Status.BAD_REQUEST).build();
         }
 
@@ -213,3 +213,510 @@ public class ArticleResource {
 
 NOTE: The `@Valid` annotation works when you want to run validation on object, passed on a resource, or when you want ot validate a nested object within the POJO.
 So for example if our article was supposed to be saved with some comments, and we had some validation annotations on the comments, we would need to put `@Valid` on the comments definition.
+
+=== Setting custom messages on validations
+
+Let's try another type of validation.
+We want to validate the password of a new user.
+A strong password is considered to have:
+
+- At least 8 characters
+- Combination of upper and lower-case letters
+- Digits
+- Special characters
+
+Doing such a check could be done, with a single regular expression.
+
+[source,regex]
+----
+^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$
+----
+
+Now that we have that expression figured out, we can add it as validation rule, onto our `NewUserDTO`.
+
+[source,java]
+----
+public class NewUserDTO extends UserDTO {
+
+    @Pattern(regexp = "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[@$!%*?&])[A-Za-z\\d@$!%*?&]{8,}$")
+    private String password;
+
+    @NotNull
+    private UserType userType;
+
+    //getters and setters
+}
+----
+
+Afterwards, as we did previously we need to add `@Valid` annotation to the `UserResource.registerUser()` method.
+
+[source,java]
+----
+    public Response registerUser(@Valid @NotNull NewUserDTO newUserDTO) {...}
+----
+
+TIP: Don't forget to add validations on other properties inside `UserDTO`, so you can get rid of the manual checks.
+
+And then let's test:
+
+[source,curl]
+----
+curl -i --location --request POST 'localhost:8080/user' \
+--header 'Content-Type: application/json' \
+--data-raw '{
+    "firstName": "John",
+    "lastName": "Smith",
+    "password": "12345",
+    "userName": "js1234",
+    "email": "john1234@google.com",
+    "userType": "SUBSCRIBER"
+}'
+----
+
+We get the following response body:
+
+[source,json]
+----
+{
+    "classViolations": [],
+    "parameterViolations": [
+        {
+            "constraintType": "PARAMETER",
+            "message": "must match \"^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[@$!%*?&])[A-Za-z\\d@$!%*?&]{8,}$\"",
+            "path": "registerUser.newUserDTO.password",
+            "value": "12345"
+        }
+    ],
+    "propertyViolations": [],
+    "returnValueViolations": []
+}
+----
+
+Seems pretty messy, doesn't it?
+ +
+Unfortunately we are not computers, and although programmers are kind of able to read RegEx, most people are not.
+We need a better, more user-friendly, way to tell the client that there's something wrong with the password.
+Fortunately all bean validation annotations come with a second property, called `message`.
+So if we add a custom message, this is what we are going to get, instead of the default value, defined by the validation annotation.
+
+[source,java]
+----
+public class NewUserDTO extends UserDTO {
+
+    @NotBlank
+    @Pattern(regexp = "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[@$!%*?&])[A-Za-z\\d@$!%*?&]{8,}$",
+    message = "The password must be at least 8 characters long, " +
+            "contain at least one upper and lower-case character, at least one digit and at least one special character.")
+    private String password;
+
+    // the other stuff
+}
+----
+
+Now if we try the query again, we will get the following response.
+
+[source,json]
+----
+{
+    "classViolations": [],
+    "parameterViolations": [
+        {
+            "constraintType": "PARAMETER",
+            "message": "The password must be at least 8 characters long, contain at least one upper and lower-case character, at least one digit and at least one special character.",
+            "path": "registerUser.newUserDTO.password",
+            "value": "12345"
+        }
+    ],
+    "propertyViolations": [],
+    "returnValueViolations": []
+}
+----
+
+That's ok, but what can you do if for example our system supports multiple countries.
+For example our service could run not only in english-speaking countries, but it may run in Spain, Japan, Germany.
+Just like RegEx, our users are not supposed to know english.
+To tackle this, we can create a localization bundle (A.K.A. l8n), to get different messages for different locales.
+
+Create some files, called `ValidationMessages_en.properties`, `ValidationMessages_es.properties`, `ValidationMessages_ja.properties` into the `src/main/resources` folder.
+Your IDE my instantly recognize the group of these files as a Resource bundle.
+Then add a key-value pair of your message inside.
+
+- In English:
++
+[source,properties]
+----
+invalid.password.format=The password must be at least 8 characters long, contain at least one upper and lower-case character, at least one digit and at least one special character.
+----
+
+- In Spanish
++
+[source,properties]
+----
+invalid.password.format=La contrase\u00f1a debe tener al menos 8 caracteres, contener al menos un car\u00e1cter en may\u00fasculas y min\u00fasculas, al menos un d\u00edgito y al menos un car\u00e1cter especial.
+----
+
+- And in Japanese
++
+[source,properties]
+----
+invalid.password.format=\u30d1\u30b9\u30ef\u30fc\u30c9\u306f \u0038 \u6587\u5b57\u4ee5\u4e0a\u3067\u3001\u5927\u6587\u5b57\u3068\u5c0f\u6587\u5b57\u3092 \u0031 \u6587\u5b57\u4ee5\u4e0a\u3001\u6570\u5b57\u3092 \u0031 \u6587\u5b57\u4ee5\u4e0a\u3001\u7279\u6b8a\u6587\u5b57\u3092 \u0031 \u6587\u5b57\u4ee5\u4e0a\u542b\u3080\u5fc5\u8981\u304c\u3042\u308a\u307e\u3059\u3002
+----
+
+NOTE: When using a language that contains characters outside ASCII, we need to escape those characters, because they won't be encoded to UTF-8.
+
+Next step is to refer to that property inside the validation annotation.
+
+[source,java]
+----
+public class NewUserDTO extends UserDTO {
+
+    @NotBlank
+    @Pattern(regexp = "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[@$!%*?&])[A-Za-z\\d@$!%*?&]{8,}$", message = "{invalid.password.format}")
+    private String password;
+
+    //some other properties I guess
+}
+----
+
+When you put the content of the message into curly braces, Quarkus will detect that this is referring to a pair within the resource bundle, and will interpolate the message for you, depending on the user's locale.
+
+One last thing that you need to do in Quarkus, is tell your application, that you're going to support several languages.
+You can do so, by adding `quarkus.locales=en,es,ja` into `application.properties`.
+If you miss that, you're going to spend a very long time, trying to figure our why it's not working.
+
+TIP: Interpolation of values works not only for properties, but for values as well.
+For example, we are checking if the Article's title is between 1 and 255 characters.
+If we want, we can define the following message: `@Size(min = 1, max = 225, message = "The title of the article must be between {min} and {max} characters")`.
+This is a valid expression and will interpolate the values of `min` and `max` into the message.
+You can also use this within `ValidationMessages.properties` file.
+
+Now let's see that in action...
+
+If our user is Japanese and they try to create their account, the query would look like this:
+
+[source,curl]
+----
+curl -i --location --request POST 'localhost:8080/user' \
+--header 'Accept-Language: ja' \ <.>
+--header 'Content-Type: application/json' \
+--data-raw '{
+    "firstName": "John",
+    "lastName": "Smith",
+    "password": "12345",
+    "userName": "js1234",
+    "email": "john1234@google.com",
+    "userType": "SUBSCRIBER"
+}'
+----
+<.> The `Accept-Language` header by default is optional.
+When it is not passed, our server will return response in the default language, which is usually English, unless something else is configured.
+If the user's operating system is different, the browser will pick that up and pass it to the header of every request.
+
+Then in response we are going to get:
+
+[source,json]
+----
+{
+    "classViolations": [],
+    "parameterViolations": [
+        {
+            "constraintType": "PARAMETER",
+            "message": "パスワードは 8 文字以上で、大文字と小文字を 1 文字以上、数字を 1 文字以上、特殊文字を 1 文字以上含む必要があります。",
+            "path": "registerUser.newUserDTO.password",
+            "value": "12345"
+        }
+    ],
+    "propertyViolations": [],
+    "returnValueViolations": []
+}
+----
+
+NOTE: If Japanese is native to you and you see grammatical or lexical errors, please blame Google Translate for it, not us.
+If you see English errors, to begin with, blame it on the writer of this article.
+
+=== Simplifying your validation error messages (Exception mappers)
+
+Sometimes you may find the response object of validation violation too complex, or you may have agreement with your team how error messages should be formatted.
+So what can you do, when you have to agree on the format of the response, you need to return?
+
+You can create exception mappers.
+Exception mappers are a bit more advanced part of JAX-RS and CDI, we have not touched yet, and we think it's time to introduce you to it.
+
+Every time a bean validation is violated, what you get is a response of type `400 BAD REQUEST` with the body of the violated property.
+You never see an exception inside the log of the application, you never get to handle the error by yourself.
+Usually when a violation happens, the hibernate bean validation will throw a `javax/jakarta.validation.ConstraintViolationException`.
+This exception is handled by an internal exception mapper, that takes the gathered data, and builds a response with the body of the violation information.
+We want to be able to control that.
+
+Create a new package, called `exception` and add a new class, called `ConstraintViolationExceptionMapper`.
+
+[source,java]
+----
+package com.vidasoft.magman.exception;
+
+import javax.validation.ConstraintViolationException;
+import javax.ws.rs.core.Response;
+import javax.ws.rs.ext.ExceptionMapper;
+import javax.ws.rs.ext.Provider;
+
+@Provider
+public class ConstraintViolationExceptionMapper implements ExceptionMapper<ConstraintViolationException> {
+    @Override
+    public Response toResponse(ConstraintViolationException e) {
+        return null;
+    }
+}
+----
+
+Now when a constraint is violated, we are going to get this handler invoked.
+If we try our bad request in this state, we are going to get `204 NO CONTENT` as a response, which means we have successfully overridden the behavior of our violation response.
+
+Next step is to define our response.
+Let's say that we want our list of violations to look like this:
+
+[source,json]
+----
+[
+    {
+        "property":"registerUser.newUserDTO.password",
+        "message":"The password must be at least 8 characters long, contain at least one upper and lower-case character, at least one digit and at least one special character."
+    },
+    {
+        "property":"registerUser.newUserDTO.userType",
+        "message": "must not be null"
+    }
+]
+----
+
+First we need to define a POJO that is going to store that JSON.
+
+[source,java]
+----
+public class ViolationMessage {
+
+    private String property;
+    private String message;
+
+    public ViolationMessage() {
+    }
+
+    public ViolationMessage(String property, String message) {
+        this.property = property;
+        this.message = message;
+    }
+
+    public String getProperty() {
+        return property;
+    }
+
+    public void setProperty(String property) {
+        this.property = property;
+    }
+
+    public String getMessage() {
+        return message;
+    }
+
+    public void setMessage(String message) {
+        this.message = message;
+    }
+}
+----
+
+Then we need to implement the handling of the exception into our mapper.
+
+[source,java]
+----
+@Provider
+public class ConstraintViolationExceptionMapper implements ExceptionMapper<ConstraintViolationException> {
+    @Override
+    public Response toResponse(ConstraintViolationException e) {
+        return Response.status(Response.Status.BAD_REQUEST)
+                .entity(buildResponseContent(e))
+                .build();
+    }
+
+    private List<ViolationMessage> buildResponseContent(ConstraintViolationException violationEx) {
+        var result = new LinkedList<ViolationMessage>();
+
+        for (ConstraintViolation<?> violation : violationEx.getConstraintViolations()) {
+            var property = violation.getPropertyPath().toString();
+            var message = violation.getMessage();
+            result.add(new ViolationMessage(property, message));
+        }
+
+        return result;
+    }
+}
+----
+
+Now if we try our request, we should be getting as a response our custom defined message.
+
+=== Creating custom bean validations
+
+The bean validation extension does not come with all scenarios and checks under the sun, you may come up with.
+For that reason the door is opened to add your own validations.
+To show you how, let's start with our password validation.
+
+What if we don't want to use this wacky `@Pattern` annotation, but we want to use our own `@Password`.
+
+Say no more!
+ +
+Simply create a new annotation, called `Password` and implement it like this:
+
+[source,java]
+----
+@Documented
+@Retention(RUNTIME)
+@Constraint(validatedBy = {}) <.>
+@Target({FIELD, METHOD, PARAMETER, ANNOTATION_TYPE})
+@NotBlank @Pattern(regexp = "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[@$!%*?&])[A-Za-z\\d@$!%*?&]{8,}$") <.>
+public @interface Password {
+
+    String message() default "{invalid.password.format}"; <3>
+
+    Class<?>[] groups() default {}; <3>
+
+    Class<? extends Payload>[] payload() default {}; <3>
+}
+----
+<.> With the `@Constraint` annotation, we're telling Quarkus that this annotation is going to be used for bean validation.
+The `validatedBy` property is used to define custom validators.
+We are going to touch this topic in a bit.
+
+<.> All constraint validation annotations are able to inherit the behavior of other constraint validators.
+This is helpful when you want to combine couple of validations into one.
+
+<.> `message()`, `groups()` and `payload()` are mandatory fields for every constraint validation annotation.
+You need to add them every time. 
+
+Now on the `NewUserDTO` side, you can get rid ot the stack of annotations and use just `@Password`.
+
+==== Creating custom validators
+
+Sometimes you may not be able to validate something with the stock constraint validators.
+For example, we want to make sure the username of the user is unique, and we do not want to check that inside our resource or service code.
+What can we do about it?
+
+First we create an annotation.
+
+[source,java]
+----
+@Documented
+@Retention(RUNTIME)
+@Constraint(validatedBy = {})
+@Target({FIELD, METHOD, PARAMETER, ANNOTATION_TYPE})
+public @interface Unique {
+
+    String message() default "The entered username must be unique.";
+
+    Class<?>[] groups() default {};
+
+    Class<? extends Payload>[] payload() default {};
+}
+----
+
+Next we need to create our validator.
+
+[source,java]
+----
+public class UniqueUserValidator implements ConstraintValidator<Unique, String> { <.>
+    @Override
+    public boolean isValid(String username, ConstraintValidatorContext constraintValidatorContext) {
+        return User.find("userName", username).firstResultOptional().isEmpty();
+    }
+}
+----
+<.> This generic interface here will ask for the annotation we are validating with and the type of the variable that is expected.
+
+Then we go back to our `@Unique` annotation and inside `@Constraint(validatedBy = {})`, we refer to our validator.
+
+[source,java]
+----
+@Documented
+@Retention(RUNTIME)
+@Constraint(validatedBy = {UniqueUserValidator.class})
+@Target({FIELD, METHOD, PARAMETER, ANNOTATION_TYPE})
+public @interface Unique { ... }
+----
+
+Now once we add this annotation to our `userName` property, the validator will work every time the bean validator is called.
+
+=== Calling bean validation within the code
+
+Sometimes for whatever reason you might want to call bean validation programmatically, instead of depending on Quarkus to do it.
+Let's create a service around it to see how it works.
+
+Create a class, called `ValidationService`.
+
+[source,java]
+----
+@ApplicationScoped
+public class ValidationService {
+    Validator validator;
+
+    @PostConstruct
+    void init() {
+        validator = Validation.buildDefaultValidatorFactory().getValidator();
+    }
+
+    public <T> List<ViolationMessage> validateObject(T objectToValidate) {
+        return validator.validate(objectToValidate)
+                .stream()
+                .map(v -> new ViolationMessage(v.getPropertyPath().toString(), v.getMessage()))
+                .collect(Collectors.toList());
+
+    }
+}
+----
+
+Then we can use that service for any of our resources.
+
+[source,java]
+----
+@Path("/article/{id}/comment")
+public class CommentResource {
+
+    @Inject
+    CommentService commentService;
+
+    @Inject
+    ValidationService validationService;
+
+    @POST
+    @Transactional
+    @Consumes(MediaType.APPLICATION_JSON)
+    public Response createComment(@NotNull @Positive @PathParam("id") Long articleId, CommentDTO commentDTO) {
+        var commentViolations = validationService.validateObject(commentDTO);
+        if (commentViolations.size() > 0) {
+            return Response.status(Response.Status.BAD_REQUEST).entity(commentViolations).build();
+        }
+
+        User author = User.findById(commentDTO.getAuthorId());
+        if (author == null) {
+            return Response.status(Response.Status.BAD_REQUEST).build();
+        }
+
+        Article article = Article.findById(articleId);
+        if (article == null) {
+            return Response.status(Response.Status.NOT_FOUND).build();
+        }
+
+        Comment comment = commentService.createComment(commentDTO.getContent(), author, article);
+
+        return Response.created(URI.create(String.format("/article/%d/comment/%d", articleId, comment.id))).build();
+    }
+
+    // even more code
+}
+----
+
+Now every time we try to create a comment, our `ValidationService` will make sure, we are not violating the `CommentDTO` rules.
+
+=== What next?
+
+Now it's your turn.
+Look through your code.
+Find possible places where you can add bean validation and make the world a slightly better place.
+
+In the next chapter, we are going to talk a bit about system configurations, and how you can define your own properties with the `application.properties` file, and other ways, powered by the MicroProfile specifications.

@@ -1,12 +1,24 @@
 package com.vidasoft.magman.user;
 
 import com.vidasoft.magman.model.User;
+import com.vidasoft.magman.validator.Unique;
+
+import javax.validation.constraints.Email;
+import javax.validation.constraints.NotBlank;
 
 public class UserDTO {
 
+    @Unique
+    @NotBlank
     private String userName;
+
+    @NotBlank
     private String firstName;
+
+    @NotBlank
     private String lastName;
+
+    @Email
     private String email;
 
 

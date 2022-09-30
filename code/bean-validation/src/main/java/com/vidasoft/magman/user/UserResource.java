@@ -8,6 +8,8 @@ import javax.annotation.PreDestroy;
 import javax.enterprise.context.RequestScoped;
 import javax.inject.Inject;
 import javax.transaction.Transactional;
+import javax.validation.Valid;
+import javax.validation.constraints.NotNull;
 import javax.ws.rs.Consumes;
 import javax.ws.rs.POST;
 import javax.ws.rs.Path;
@@ -46,12 +48,7 @@ public class UserResource {
     @POST
     @Transactional
     @Consumes(MediaType.APPLICATION_JSON)
-    public Response registerUser(NewUserDTO newUserDTO) {
-        if (checkIfNull(newUserDTO.getUserName(), newUserDTO.getPassword(),
-                newUserDTO.getFirstName(), newUserDTO.getLastName(), newUserDTO.getUserType(), newUserDTO.getEmail())) {
-            return Response.status(Response.Status.BAD_REQUEST).build();
-        }
-
+    public Response registerUser(@Valid @NotNull NewUserDTO newUserDTO) {
         Optional<User> existingUser = User.find("userName = ?1 or email = ?2", newUserDTO.getUserName(),
                 newUserDTO.getEmail()).firstResultOptional();
         if (existingUser.isPresent()) {
@@ -66,25 +63,11 @@ public class UserResource {
     @POST
     @Path("login")
     @Consumes(MediaType.APPLICATION_JSON)
-    public Response loginUser(LoginDTO login) {
-        if (checkIfNull(login.getUserName(), login.getPassword())) {
-            return Response.status(Response.Status.BAD_REQUEST).build();
-        } else {
-            Optional<User> loggedUser = userService.loginUser(login.getUserName(), login.getPassword());
-            return loggedUser
-                    .map(u -> Response.ok(new UserDTO(u)).build())
-                    .orElseGet(() -> Response.status(Response.Status.UNAUTHORIZED).build());
-        }
-    }
-
-    private boolean checkIfNull(Object... fields) {
-        for (var field : fields) {
-            if (field == null) {
-                return true;
-            }
-        }
-
-        return false;
+    public Response loginUser(@Valid @NotNull LoginDTO login) {
+        Optional<User> loggedUser = userService.loginUser(login.getUserName(), login.getPassword());
+        return loggedUser
+                .map(u -> Response.ok(new UserDTO(u)).build())
+                .orElseGet(() -> Response.status(Response.Status.UNAUTHORIZED).build());
     }
 
 }

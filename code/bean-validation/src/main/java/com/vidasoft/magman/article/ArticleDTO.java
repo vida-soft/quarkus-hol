@@ -14,7 +14,7 @@ public class ArticleDTO {
     private Long id;
 
     @NotBlank
-    @Size(min = 1, max = 225)
+    @Size(min = 1, max = 225, message = "The title of the article must be between {min} and {max} characters")
     private String title;
 
     @NotBlank

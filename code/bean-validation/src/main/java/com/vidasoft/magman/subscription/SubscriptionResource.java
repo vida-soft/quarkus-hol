@@ -6,6 +6,9 @@ import com.vidasoft.magman.model.Subscriber;
 import javax.enterprise.context.RequestScoped;
 import javax.inject.Inject;
 import javax.transaction.Transactional;
+import javax.validation.Valid;
+import javax.validation.constraints.NotNull;
+import javax.validation.constraints.Positive;
 import javax.ws.rs.Consumes;
 import javax.ws.rs.POST;
 import javax.ws.rs.PUT;
@@ -25,15 +28,7 @@ public class SubscriptionResource {
     @Transactional
     @Path("{userId}")
     @Consumes(MediaType.APPLICATION_JSON)
-    public Response addPaymentMethod(@PathParam("userId") Long userId, CreditCardDTO creditCardDTO) {
-        if (userId == null || userId < 0) {
-            return Response.status(Response.Status.BAD_REQUEST).build();
-        }
-
-        if (creditCardDTO.getType() == null || creditCardDTO.getNumber() == null) {
-            return Response.status(Response.Status.BAD_REQUEST).build();
-        }
-
+    public Response addPaymentMethod(@Positive @PathParam("userId") Long userId, @Valid @NotNull CreditCardDTO creditCardDTO) {
         CreditCard creditCard = new CreditCard(creditCardDTO.getNumber(), creditCardDTO.getType());
         return Subscriber.<Subscriber>findByIdOptional(userId)
                 .stream().peek(s -> s.creditCard = creditCard)
@@ -43,14 +38,10 @@ public class SubscriptionResource {
 
     @POST
     @Path("{userId}")
-    public Response chargeSubscriber(@PathParam("userId") Long userId) {
-        if (userId == null || userId < 0) {
-            return Response.status(Response.Status.BAD_REQUEST).build();
-        }
-
+    public Response chargeSubscriber(@Positive @PathParam("userId") Long userId) {
         return Subscriber.<Subscriber>findByIdOptional(userId)
                 .map(paymentService::chargeSubscriber)
-                .map(result -> result? Response.status(Response.Status.NO_CONTENT).build() : Response.status(Response.Status.NOT_ACCEPTABLE).build())
+                .map(result -> result ? Response.status(Response.Status.NO_CONTENT).build() : Response.status(Response.Status.NOT_ACCEPTABLE).build())
                 .orElseGet(() -> Response.status(Response.Status.NOT_FOUND).build());
     }
 }

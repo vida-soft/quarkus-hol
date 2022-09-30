@@ -2,13 +2,23 @@ package com.vidasoft.magman.comment;
 
 import com.vidasoft.magman.model.Comment;
 
+import javax.validation.constraints.NotBlank;
+import javax.validation.constraints.NotNull;
+import javax.validation.constraints.Positive;
+import javax.validation.constraints.Size;
 import java.util.Objects;
 import java.util.Optional;
 
 public class CommentDTO {
 
     private Long id;
+
+    @NotBlank
+    @Size(max = 255)
     private String content;
+
+    @NotNull
+    @Positive
     private Long authorId;
     private String created;
 
