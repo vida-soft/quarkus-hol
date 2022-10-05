@@ -11,10 +11,10 @@ The beginning of our journey will start with our one-to-many relationship `Artic
 insert into Users (version, email, firstName, lastName, password, userName, streetAddress, subscribedUntil,
                    creditCardType, number, DTYPE, id)
 values (0, 'sarah@google.space', 'Sarah', 'Connor', 'sarAPass', 'sarah_9645', 'Hamburger Str.', '2024-01-12', 'VISA',
-        '3698521479', 'Subscriber', 7);
-values (0, 'peter@linked.io', 'Peter', 'Blanca', 'pb&^%', 'peter_998', 'Mustard str.', '2024-01-13', 'MASTER_CARD',
-        '8774662321', 'Subscriber',8);
-values (0, 'kchuck@pongo.eu', 'Chuck', 'Keith', 'chUk', 'chuck_0998', 'Sausage Str.', '2024-01-14', 'AMERICAN_EXPRESS',
+        '3698521479456746', 'Subscriber', 7),
+       (0, 'peter@linked.io', 'Peter', 'Blanca', 'pb&^%', 'peter_998', 'Mustard str.', '2024-01-13', 'MASTER_CARD',
+        '8774662321', 'Subscriber', 8),
+       (0, 'kchuck@pongo.eu', 'Chuck', 'Keith', 'chUk', 'chuck_0998', 'Sausage Str.', '2024-01-14', 'AMERICAN_EXPRESS',
         '3698521479', 'Subscriber', 9);
 
 alter sequence HIBERNATE_SEQUENCE restart with 10;

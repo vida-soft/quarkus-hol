@@ -1,0 +1,399 @@
+== MicroProfile REST Client
+
+Most big web applications tend to be decentralized or rely on different third party servers in order to perform some task, not related to the application's core functionality.
+A good example are payment services.
+Not everybody is lucky to have a payments provider product in their company to charge their customers.
+And even if they did, the API for their payments system won't be implemented into every app they build.
+They will use a dedicated web application for payments, which they could reuse and sell out and is going to have some endpoints to perform payments.
+ +
+This is how payment services, such as Stripe, PayPal or any banking API works.
+They have their own servers, host their own applications on the internet and
+publish their APIs (usually endpoints, but sometimes libraries for different languages)
+Then third party web servers, like us, can connect to them and perform financial operations.
+
+In order to charge subscribers when they want to extent their subscription we need such payment provider too.
+But since this is a demo project for our course and we want to just demonstrate how REST client works, we are not going to integrate with the real thing, we are going to create our small dummy payment service.
+
+=== Traditional REST communication with Java
+
+As any other programming language, Java has support for REST communications out of the box.
+With the `java.net.http` package you can create any type of REST requests.
+A simple REST request in Java would look like this:
+
+[source,java]
+----
+HttpClient client = HttpClient.newHttpClient();
+HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create("http://localhost:8080/hello"))
+                .build();
+
+HttpResponse<String> response = client.send(request,
+                HttpResponse.BodyHandlers.ofString());
+----
+
+For small requests and small applications this is ok, but when you want to scale up, your application needs to connect to more and more services, establish more and more endpoints, this begins to turn counterintuitive.
+You will need to start following design patterns, create abstractions upon abstractions, so that the code looks clean and easy to use.
+
+And here comes MicroProfile REST client.
+With it, you can build JAX-RS-like client endpoints and use CDI to inject them in your dependencies.
+It is time to build our small payments service and see how this will come in handy.
+
+. Create a small Quarkus application, called *"SpendPal"* (because spending means money, and we believe in it (non sponsored marketing campaign)).
+. Add just `quarkus-resteasy-jsonb`, `quarkus-resteasy` and `quarkus-hibernate-validator` as extensions, in order to expose endpoints to the outside world.
+. Create a single endpoint to charge the customer.
+. Don't forget to set the application to run on a different port to `8080`.
+
+=== Integrating REST client into Magman
+
+We are going to assume that your SpendPal endpoint looks like this.
+
+[source,java]
+----
+@RequestScoped
+@Path("/payment")
+public class PaymentResource {
+
+    @POST
+    @Produces(MediaType.APPLICATION_JSON)
+    @Consumes(MediaType.APPLICATION_JSON)
+    public ConfirmationDTO chargeCustomer(@Valid @NotNull CreditCardDTO creditCardDTO) {
+        return new ConfirmationDTO(true, LocalDateTime.now());
+    }
+}
+----
+
+Nothing complicated, just a simple endpoint that takes payment details and returns status response of the action.
+
+Now that this is out of the way, it is time to prepare Magman for accessing `/payment` endpoint.
+
+First, let's extend our application, by adding `quarkus-rest-client-jsonb` as an extension.
+
+[source,shell]
+----
+mvn quarkus:add-extension -Dextensions="io.quarkus:quarkus-rest-client-jsonb"
+----
+
+Next step is to create a new `spendpal` package and we'll add a new interface, called `SpendPalClient` and we are going to define a `chargeCustomer` method, similar to the one implemented inside SpendPal.
+
+[source,java]
+----
+@Path("payment")
+@RegisterRestClient <.>
+public interface SpendPalClient {
+
+    @POST
+    @Produces(MediaType.APPLICATION_JSON)
+    @Consumes(MediaType.APPLICATION_JSON)
+    ConfirmationDTO chargeCustomer(CreditCardDTO creditCardDTO);
+
+}
+----
+<.> With this annotation we are telling CDI that we are going to use this class as REST client.
+
+As you can see it looks almost exactly as defining a JAX-RS endpoint.
+It is as simple as that.
+Now the next step is to configure the path and scope of that endpoint.
+By default these endpoints are of scope `Singleton`, but if you'd like to change that, you can do it in `application.properties` file.
+Regarding the location of SpendPal's endpoints, we also need to define the path to the server.
+We can do it either inside `RegisterRestClient` annotation, or use the recommended approach and add property within `application.properties`
+
+[source,application.properties]
+----
+quarkus.rest-client."com.vidasoft.magman.spendpal.SpendPalClient".url=http://localhost:8081
+quarkus.rest-client."com.vidasoft.magman.spendpal.SpendPalClient".scope=javax.inject.Singleton
+----
+
+In this scenario you'll need to exactly specify the path of the Client class.
+This should be enough to activate the rest client class inside CDI.
+Although it will work, it is not as flexible solution, when it comes to modifying these properties from system or environment perspective.
+And if you rename the interface, you'll have to change the name of the property here as well. 
+Profile specific properties are also supported for REST clients, so you can specify different URLs for different environments, meaning that most of the time you'll have to change more than to occurrences of this property.
+ +
+Good news is there is solution for that.
+
+[source,java]
+----
+@RegisterRestClient(configKey = "spendpal-client")
+public interface SpendPalClient {...}
+----
+
+With `configKey` you can give a nickname to your REST client interface, and make it easier to refer to, within the properties.
+Then your property file can look like this:
+
+[source,application.properties]
+----
+quarkus.rest-client.spendpal-client.url=http://localhost:8081
+quarkus.rest-client.spendpal-client.scope=javax.inject.Singleton
+----
+
+Now our properties are shorter and easier to refer to.
+
+[TIP]
+====
+Now if you want to configure the client path from outside application, you can:
+
+- Pass is as system property like this: `-Dquarkus.rest-client.spendpal-client.url=http://localhost:8081`
+- Set an environment variable like this: `QUARKUS_REST_CLIENT_SPENDPAL_CLIENT_URL=http://localhost:8081`
+
+Just as we used to mention - replacing everything with underscores and capital letters.
+====
+
+After the interface's been configured, it is time to use it.
+Let's go to `PaymentService` and spice it up a little, shall we?
+
+[source,java]
+----
+@ApplicationScoped
+public class PaymentService {
+
+    // definitions
+
+    @Inject
+    @RestClient<.>
+    SpendPalClient spendPalClient;
+
+    boolean chargeSubscriber(Subscriber subscriber) {
+        if (subscriber.creditCard != null) {
+            ConfirmationDTO paymentResult = spendPalClient.chargeCustomer(new CreditCardDTO(subscriber.creditCard));
+            LOGGER.log(Level.INFO, "Charging subscriber with id: {0}  and card type {1} of number: {2}",
+                    new Object[]{subscriber.id, subscriber.creditCard.creditCardType, subscriber.creditCard.number});
+
+            if (paymentResult.getSuccess()) {
+                LOGGER.log(Level.INFO, "Successfully charged customer with id: {0}  and card type {1} of number: {2}",
+                        new Object[]{subscriber.id, subscriber.creditCard.creditCardType, subscriber.creditCard.number});
+                onSubscriberCharged.fire(subscriber);
+
+                return true;
+            } else {
+                LOGGER.log(Level.WARNING, "Unable to charge customer with id: {0}  and card type {1} of number: {2}",
+                        new Object[]{subscriber.id, subscriber.creditCard.creditCardType, subscriber.creditCard.number});
+                // Will probably email the customer, or, most likely, call the police.
+                // Failed payments feel like federal crime after all ¯\_(ツ)_/¯
+            
+                return false;
+            }
+        }
+
+        return false;
+    }
+
+}
+----
+<.> This is a producer endpoint which is going to tell CDI what instance to pass.
+
+Now let's try our payment endpoint and see what happens
+
+[source,curl]
+----
+curl -i --location --request POST 'http://localhost:8080/subscription/7' <.>
+----
+<.> We are going to assume that you already have subscribers in your database.
+
+If your input data was correct and everything is configured properly, you should be getting a `204 NO CONTENT` response and the following log.
+
+[source,log]
+----
+2022-10-04 18:48:12,440 INFO  [com.vid.mag.sub.PaymentService] (executor-thread-0) Charging subscriber with id: 7  and card type VISA of number: 3698521479456746
+2022-10-04 18:48:12,441 INFO  [com.vid.mag.sub.PaymentService] (executor-thread-0) Successfully charged customer with id: 7  and card type VISA of number: 3698521479456746
+2022-10-04 18:48:12,442 INFO  [com.vid.mag.sub.SubscriptionExtensionHandler] (executor-thread-0) Sent email to subscriber 7, about their subscription renewal.
+2022-10-04 18:48:12,442 INFO  [com.vid.mag.sub.SubscriptionExtensionHandler] (executor-thread-0) Extended subscription for user 7, till 2025-01-12
+----
+
+=== Handling errors in REST Client
+
+Sometimes something might not go well.
+The data may you're passing to the REST client may be corrupted, something might be missing or the third party may be failing for whatever reason.
+ +
+With the current configuration we do not have control over different than the expected responses of our REST client.
+This means that if we get `400 BAD REQUEST` or `500 INTERNAL SERVER ERROR` responses, our application will just throw an exception.
+You might have stumbled upon such errors, if you followed our examples from the beginning.
+In a real world scenario, you would most likely expect to encounter such scenarios and you'll need to prepare your application for it.
+
+To start off, let's create a custom exception which we are going to handle within our code.
+
+[source,java]
+----
+public class SpendPalException extends Exception {
+
+    private int statusCode;
+    private Object body;
+
+    public SpendPallException(int statusCode, Object body) {
+        this.statusCode = statusCode;
+        this.body = body;
+    }
+
+    public int getStatusCode() {
+        return statusCode;
+    }
+
+    public Object getBody() {
+        return body;
+    }
+}
+----
+
+NOTE: We prefer to extend the `Exception` class, instead of `RuntimeException`, as the developer will be required to handle it, if we add it to a method.
+
+Next we need to create a mapper.
+This mapper is similar to JAX-RS exception mappers but it is reversed.
+Instead of handling exceptions, it will throw exceptions.
+
+[source,java]
+----
+public class SpendPalExceptionMapper implements ResponseExceptionMapper<SpendPalException> {
+
+    @Override
+    public SpendPalException toThrowable(Response response) {
+        return new SpendPallException(response.getStatus(), response.getEntity());
+    }
+}
+----
+
+The final step is to configure the interface to use this mapper.
+
+[source,java]
+----
+@Path("payment")
+@RegisterProvider(SpendPalExceptionMapper.class) <.>
+@RegisterRestClient(configKey = "spendpal-client")
+public interface SpendPalClient {
+
+    @POST
+    @Produces(MediaType.APPLICATION_JSON)
+    @Consumes(MediaType.APPLICATION_JSON)
+    ConfirmationDTO chargeCustomer(CreditCardDTO creditCardDTO) throws SpendPalException; <.>
+
+}
+----
+
+<.> With `@RegisterProvider` annotation we tell CDI that there's an interceptor which is going to take the non expected responses to manage them.
+<.> Here we add `throws` to make sure that all invocations of this method are handled properly. 
+
+After the refactoring we should have a payment resource method, looking like this:
+
+[source,java]
+----
+@RequestScoped
+@Path("subscription")
+public class SubscriptionResource {
+
+    @Inject
+    PaymentService paymentService;
+
+    public Response addPaymentMethod(@Positive @PathParam("userId") Long userId, @Valid @NotNull CreditCardDTO creditCardDTO) {...} //not as interesting right now
+
+    @POST
+    @Path("{userId}")
+    public Response chargeSubscriber(@Positive @PathParam("userId") Long userId) {
+        Subscriber subscriber = Subscriber.findById(userId);
+        if (subscriber != null) {
+            try {
+                var result = paymentService.chargeSubscriber(subscriber);
+                return result ? Response.status(Response.Status.NO_CONTENT).build() :
+                        Response.status(Response.Status.NOT_ACCEPTABLE).build();
+            } catch (SpendPalException e) {
+                return Response.status(e.getStatusCode()).entity(e.getBody()).build();
+            }
+        } else {
+            return Response.status(Response.Status.NOT_FOUND).build();
+        }
+    }
+}
+----
+
+Go on! 
+Give it a try.
+Create ot use a user with invalid credit card.
+Be a savage for a moment!
+
+If your have configured everything properly, you should be getting a reflection of SpendPal's response.
+
+NOTE: You should not take this as a common practice, but as an example.
+The way you are going to handle responses in real life scenarios will be defined and decided by the project team you're working with.
+
+=== Managing request headers in REST Client
+
+So far we've spoken about the surface of REST endpoints, but what if you want ot modify the headers of the request.
+Most payment services will require some type of authorization token, to make sure that nobody is trying to steal money.
+
+To begin with, let's add a header parameter to the payment endpoint, which will check the authority of the clients connecting to it.
+
+[source,java]
+----
+@RequestScoped
+@Path("/payment")
+public class PaymentResource {
+
+    public static final String VERY_SECURE_TOKEN = "mostSecureTokenEver";
+
+    @POST
+    @Produces(MediaType.APPLICATION_JSON)
+    @Consumes(MediaType.APPLICATION_JSON)
+    public ConfirmationDTO chargeCustomer(@Valid @NotNull CreditCardDTO creditCardDTO, @HeaderParam("authorization") String authorization) {
+        if (VERY_SECURE_TOKEN.equals(authorization)) {
+            return new ConfirmationDTO(true, LocalDateTime.now());
+        } else {
+            throw new UnauthorizedException();
+        }
+    }
+}
+----
+
+Now every new request to that service will return `401 UNAUTHORIZED`, unless we provide `authorization` header to our requests.
+
+There're two ways to set the headers of the request.
+The first approach would be, as you might guess, adding the header param to the rest client interface:
+
+[source,java]
+----
+    @POST
+    @Produces(MediaType.APPLICATION_JSON)
+    @Consumes(MediaType.APPLICATION_JSON)
+    ConfirmationDTO chargeCustomer(CreditCardDTO creditCardDTO, @HeaderParam("authorization") String authorization) throws SpendPalException; <.>
+----
+
+This will require us to edit all occurrences where we call that method to support the newly added argument.
+If changes are small and seam reasonable, then why not, but if you'd like to add more complicated headers or a lot more headers, and you don't want to deal with this mess everywhere, there is another more abstract approach.
+
+The second approach is to create client header factory, but keep in mind, that there can be only one such factory per class.
+ +
+Create a class, called `SpendPalHeaderFactory`:
+
+[source,java]
+----
+public class SpendPalHeaderFactory implements ClientHeadersFactory {
+
+    @Inject
+    @ConfigProperty(name = "spendpal.api.key")
+    String spendpalApiKey;
+
+    @Override
+    public MultivaluedMap<String, String> update(MultivaluedMap<String, String> multivaluedMap, MultivaluedMap<String, String> multivaluedMap1) {
+        MultivaluedMap<String, String> result = new MultivaluedHashMap<>();
+        result.add("Authorization", spendpalApiKey);
+        return result;
+    }
+}
+----
+
+Afterwards, add a reference to the factory within the client interface:
+
+[source,java]
+----
+// annotations which are already there
+@RegisterClientHeaders(SpendPalHeaderFactory.class)
+public interface SpendPalClient {
+
+    @POST
+    @Produces(MediaType.APPLICATION_JSON)
+    @Consumes(MediaType.APPLICATION_JSON)
+    ConfirmationDTO chargeCustomer(CreditCardDTO creditCardDTO) throws SpendPalException;
+
+}
+----
+
+Now you should be able to perform payments again.
+ +
+And finally a bonus approach. 
+You can use the annotation `@ClientHeaderParam` for headers which are not susceptible to change. 

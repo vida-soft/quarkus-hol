@@ -1,0 +1,263 @@
+== System properties with MicroProfile Config
+
+One pretty neat thing about Quarkus is that it supports https://microprofile.io/[MicroProfile APIs], right our of the box.
+
+
+.What is MicroProfile
+*************************
+_MicroProfile is a community-driven specification designed to provide a baseline platform definition that optimizes the Enterprise Java for microservices architecture and delivers application portability across multiple MicroProfile runtimes, including Open Liberty. 
+It gives Java developers a platform to collaborate and innovate on areas of common interest. 
+The MicroProfile specification consists of a collection of Enterprise Java APIs and technologies that together form a core baseline for microservices that aims to deliver application portability across multiple runtimes._
+
+-- _https://developer.ibm.com/series/what-is-microprofile/[IBM Developer Blog]_
+
+MicroProfile provides APIs and extensions which will give more power to your applications, more popular of which include:
+
+- *MicroProfile Config API* - set and configure system properties in an intuitive way, using CDI.
+- *RestClient* - build REST client with the JAX-RS API annotations, to allow your app to connect with other services.
+- *MicroProfile JWT* - integration for role-based access control (RBAC) to manage the access users have to the application.
+- *Reactive messaging* - API for integrating messaging systems such as Kafka.
+- *Fault tolerance* - API used for concurrent environments, helpful managing high load of queries, asynchronous code execution and connection issues.
+- *OpenAPI* - APIs for building OpenAPI documentation, along with Swagger ui to help visualize ant test the endpoints listed by OpenAPI 
+- *Metrics* - this API allows to create metric custom counters to track key indexes crucial for the application's performance.
+The data could then be fed to services such as Elastic Search and used to create charts for analysis and every day monitoring.
+
+These and many more are the goodies that MicroProfile brings on the table.
+Just like Java / Jakarta EE the spec is based on interfaces, which then have to be implemented by application server providers.
+
+Through out the next chapters we are going to look into the listed features above.
+*************************
+
+With Quarkus, luckily, you have support for MicroProfile with the additional extensions.
+One specification that comes right out of the box is MicroProfile Config.
+Remember the `application.properties` file?
+It is already using MP Config.
+This is our entrypoint to this chapter.
+
+=== What is MicroProfile Config?
+
+Usually when you need to add custom configurations to your application, such as variables, that are needed for the proper initialization for your application, you would create an environment variable or pass that as a system property, or have a `.properties` file from where you would read that property.
+ +
+This requires you to have implementations which will read those properties from all three sources and pass them safely to the application.
+It would require to check if the right properties are passed, if they exist, whether they should have a default value, which source of properties has the highest priority and so on.
+
+MiroProfile provides a solution for this hassle, letting you, the developer, only worry about the names of the properties.
+With the use of a special annotation `@ConfigProperty` and the power of CDI, you can simply specify the name and type of the property, and the rest is handled by the application server.
+If the property is mandatory, and is not provided, the application won't start and will list all the properties needed to be set.
+ 
+
+You could also choose for what type of environment, what properties to use.
+This would help you define how your application will behave on different environments, such as when your application is in `dev` mode or in `production` mode.
+For example if your application is doing some financial operations, such as payment service, you would want to connect to a testing server, instead of a real payment server, when it comes to `dev` environment, but when the application goes live, you would want to use the real services, and then you should have the stage configured for real life.
+
+All of these concerns can be solved with MP Config, so let's see how.
+
+=== Using MicroProfile Config in our application
+
+The usage of the API is pretty straightforward.
+To test it out let's create our fist custom configuration property...
+
+When it comes to management for our application, the one user who has all the power would be the manager.
+ +
+So there's the question - can a magazine manager exist without the manager?
+ +
+The answer should probably be no.
+
+We need to have a default manager user created, who will lead our magazine manager platform.
+Let's set up an environment for one, shall we?
+
+First off, create a service class inside the `user` package.
+Let's call it `ManagerInitiationService`.
+This class should serve to create the manager user, at the start of the application.
+
+[source,java]
+----
+@ApplicationScoped
+public class ManagerInitiationService {
+
+    @Inject
+    PasswordService passwordService;
+
+    @Transactional
+    public void createManager(@Observes StartupEvent startupEvent) { <.>
+        if (Manager.count() == 0) {
+            var managerPassword = "manager";
+            var managerSalt = passwordService.generateSalt();
+            var manager = new Manager("manager", passwordService.encryptPassword(managerPassword, managerSalt),
+                    "Manager", "User", "manager@vida-soft.com");
+            manager.salt = managerSalt;
+            manager.persist();
+        }
+    }
+}
+----
+<.> The `StartupEvent` is an empty payload event, fired by Quarkus, when the server is successfully initialized.
+When you want to do something with your application on startup, one of the ways it could and is recommended to be done is by listening for this event.
+Read more about application initialization https://quarkus.io/guides/lifecycle[here].
+
+Now we have the manager user created if it's missing, but there is one problem we have not yet solved.
+What happens if we want to modify this property every time we need to change it?
+We don't want for example to allow the default manager password to be `manager` when talking about production environments or such.
+One thing we could do is ask for that property from the outside.
+
+[source,java]
+----
+@ApplicationScoped
+public class ManagerInitiationService {
+
+    @Inject
+    PasswordService passwordService;
+
+    @Inject <1>
+    @ConfigProperty(name = "magman.manager.user", defaultValue = "manager") <2>
+    String managerUsername;
+
+    @Inject <1>
+    @ConfigProperty(name = "magman.manager.password", defaultValue = "manager") <2>
+    String managerPassword;
+
+    @Transactional
+    public void createManager(@Observes StartupEvent startupEvent) {
+        if (Manager.count() == 0) {
+            var managerSalt = passwordService.generateSalt();
+            var manager = new Manager(managerUsername, passwordService.encryptPassword(managerPassword, managerSalt),
+                    "Manager", "User", "manager@vida-soft.com");
+            manager.salt = managerSalt;
+            manager.persist();
+        }
+    }
+}
+----
+<.> Config properties are injected by CDI producers.
+You already know how this works, so you should get the basic idea.
+<.> With `org.eclipse.microprofile.config.inject.ConfigProperty` we tell our application where to look for the value of this property.
+The only mandatory field here is `name`.
+Providing `defaultValue` is optional, but if this is not configured before application startup, the application won't start.
+
+Now if you try to run the same code, without any additional changes, and log int with the manager, you'll probably get the same result.
+
+=== Ways to provide config properties
+
+There's three ways to set config properties to your application.
+
+. By modifying the `application.properties` file (lowest priority)
+. By setting an environment variable
+. By passing the property as a system property with `-D` (highest priority)
+
+All three methods are ordered from lowest to highest priority, meaning that the second will override the third and the third will override the second.
+
+==== Modifying the `application.properties` file
+
+This one is simple.
+Go to `src/main/resources/application.properties` and add the values of your choice like this:
+
+[source,properties]
+----
+magman.manager.user=admin
+magman.manager.password=adm!n
+----
+
+Now when you redeploy your application, the default manager user will be created with those credentials.
+ +
+One other thing to note here is that you can set different properties for different environments.
+This is also true for the properties we previously had as well.
+So for example if you want to have one user in `dev` environment and different one in `prod`, you could simply do it like this:
+
+[source,properties]
+----
+%dev.magman.manager.user=manager
+%dev.magman.manager.password=mAnAggEr
+
+%prod.magman.manager.user=admin
+%prod.magman.manager.password=adm!n
+
+magman.manager.user=admin
+magman.manager.password=adm!n
+----
+
+Now when you start the app in the profile, named by `%{profile}`, the values in context will be applied to the application (unless you, of course, decide to use a higher priority setting).
+If your application is not running in any of the specified profiles, it will use the default ones, without a profile.
+And if no default one were added, and no `defaultValue` is set to the `ConfigProperty` annotation, then you'll get a startup error, because no value of that property is provided.
+
+[NOTE]
+====
+Usually when you run your application with `mvn quarkus:dev` the default profile name that is loaded is `dev`.
+When you run tests, it is `test` and when you run a standalone jar, it will automatically set the profile `prod`.
+ +
+To define a different profile, you will need to pass either system property `-Dquarkus.profile` or environment variable `QUARKUS_PROFILE`. 
+====
+
+The same thing is valid for database connections and generation strategies, and anything Quarkus internal related.
+
+CAUTION: When setting different database generation strategies for different profiles, you need to set `quarkus.profile` before compilation of the app, as Hibernate will need that ahead of time, otherwise it will use the default generation strategy that is set.
+
+==== Passing config properties as system variables
+
+This is even more straightforward.
+When you need to override the `application.properties` or environment file configurations for a compiled application, you need to simply pass the values with system arguments like so:
+
+[source,shell]
+----
+java -Dmagman.user=administrator -Dmagman.password=AdmInIstrAt9r -jar magman.jar
+----
+
+==== Passing config properties as environment variables
+
+This is useful when you have automated containerized environments such as Docker, or you are using Terraform scripts or something that runs your applications automatically.
+Then you can set the application's properties as environment variables.
+Different operating systems do this differently, but most commonly for Windows you would do it by using the `SET` command and for Unix-based systems, you would use the `export` command.
+
+So in our scenario, to configure those properties, you will have to do it like this.
+
+On Windows:
+[source,batch]
+----
+SET MAGMAN_MANAGER_USER=admin
+SET MAGMAN_MANAGER_PASSWORD=Adm!n
+----
+
+On Unix:
+
+[source,shell]
+----
+export MAGMAN_MANAGER_USER=admin
+export MAGMAN_MANAGER_PASSWORD=Adm!n
+----
+
+When it comes to environment variables, all letters should be uppercase and all dots, and dashes should be replaced with underscores.
+Quarkus will know how to handle and map those properties for you afterwards.
+
+=== Config Properties additional info
+
+You can pass most of the primitive types as config properties.
+So for example if you want to add a property as an integer, simply define an `int` variable inside the class and Quarkus will know how to convert it.
+
+Configuration properties also support lists.
+So if you define a list of something, for example...
+
+[source,java]
+----
+
+@Inject
+@ConfigProperty(name = "names")
+List<String> names;
+
+@Inject
+@ConfigProperty(name = "numbers")
+Set<Integer> numbers;
+
+----
+
+Then you can specify the contents of these lits with comma-separated strings
+
+[source,application.properties]
+----
+names=John,George,Stephanie,Angela
+numbers=1,2,3,4,5
+----
+
+Quarkus will be able to recognize the type of the properties, split and parse the numbers and names as expected.
+
+=== Conclusion
+
+In the next chapter, we are going to go through the next MicroProfile topic, RestClient, in attempt to build a small dummy payment service for our subscribers.
