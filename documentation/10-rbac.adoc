@@ -1,0 +1,300 @@
+== Role-based access control with MicroProfile JWT
+
+When you deal with web applications no matter, big or small, you would want to identify who is using the application and what they do with it.
+A typical approach to do this is with a web session.
+In the Java world a session is usually handled with a cookie, called "jsessionid".
+This cookie resembles a token, which maps to an object instance within the Java web application.
+Using that session token, we are able to identify users in our database, decide whether they should have access on a resource and what content should they receive.
+
+There are some problems with approach.
+If the application gets restarted by a reason, the session will end, and the user will need to reauthenticate, so they can use the server again.
+Moreover the approach is not suitable for distributed systems.
+It works well for a single deployment of the application, but imagine if you had something more wide distributed, like Google.
+There are multiple Google servers all over the world, running the same code.
+And they exist, so that your queries can get to the nearest server, so that all the billion users get to have the best and fastest experience they could, instead of waiting millions of requests to be processed by a single server.
+In this kind of scenario one query can be processed by one server and another, by another server and all the servers will know who you are.
+Your session is everywhere.
+ +
+Also since Quarkus is stateless and does manage sessions, we are not able to use that jsessoionid cookie to maintain user content and access.
+Fortunately, a more modern approach exists.
+This approach is being adopted by a lot of web services nowadays.
+And it's name is Json Web Token (JWT).
+
+.What is JWT?
+***************************
+Json Web Token  is an open standard (https://tools.ietf.org/html/rfc7519[RFC 7519]), used to transfer claims between two parties.
+As the name suggests, JWT resembles JSON object and it consists of three parts:
+
+- *Header* (algorithm and token type)
++
+[source,json]
+----
+{
+  "alg": "RS256",
+  "typ": "JWT"
+}
+----
+
+- *Payload* - combination of claims, user roles and other useful user data, such as issue time, expiration time and etc.
++
+[source,json]
+----
+{
+  "sub": "1234567890",
+  "name": "John Doe",
+  "admin": true,
+  "iat": 1516239022
+}
+---- 
+
+- *Signature* - generated signature, based on the algorithm and key/certificate.
+It is used to help parties verify the legitimacy of the claims.
+Think of it as the validity measures, placed on your id card.
+
+At the end the key is encoded in base 64 and it looks like this
+
+[source,jwt]
+----
+eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c
+----
+
+To find out more bout JWT, click https://jwt.io/[here].
+
+***************************
+
+The payload of the token can be modified to store any data that is required for the web application to identify the user, although it is recommended to be brief. 
+The more data you put inside your JWT, the bigger the request will get, which will cause slower processing.
+
+=== Configuring Quarkus for JWT
+
+A JWT is passed to the user upon successful login.
+The user makes a request to the server with their credentials and in response they get the token either in the response's header or inside the body.
+Once that token is obtained, the client should take it, and place it inside the `Authorization` header of every following request.
+MicroProfile JWT is capable to automatically parse that header, read its contents and validate the authority of the signature.
+With the annotations the specification provides, the developer is capable of then securing the application's endpoints however they please.
+
+First thing we are going to do is prepare our project for JWT.
+Usually in applications, consisting of multiple microservices there will be one central service, responsible for issuing JWT tokens to the application.
+https://www.keycloak.org[Keycloak] is such an example.
+It provides multiple ways for users to authenticate, convenient role management and nice user interface to suit the needs of regular users.
+ +
+In our project, though, we are not going to use centralized authentication service.
+We are going to implement something more simple, that is just going to suit our needs for the examples.
+
+==== Adding JWT extension
+
+The first step, as always, when it comes to something new, is to add extension.
+
+[source,shell]
+----
+mvn quarkus:add-extension -Dextensions="io.quarkus:quarkus-smallrye-jwt"
+----
+
+==== Creating SSL key pair
+
+NOTE: For this step you are required to have OpenSSL installed.
+If you are running on a Unix-based system, you probably already have it.
+
+To sign our JWT tokens, we are going to need a pair of public and private keys, our application will be using.
+Usually the private key is needed for the issuer to sign the JWT.
+The public key is then used by the web applications to verify the signature.
+
+. Create a folder called `jwt` somewhere in your system.
+. Create the private key
++
+[source,shell]
+----
+openssl genrsa -out /dir/to/private.pem 2048
+----
+
+. Next step is to create the public key:
++
+[source,shell]
+----
+openssl rsa -in /dir/to/private.pem -pubout -outform PEM -out /dir/to/public_key.pem
+----
+
+. Finally we need a private PKCS8 key.
+This format is supported by Quarkus.
++
+[source,shell]
+----
+openssl pkcs8 -topk8 -inform PEM -in /dir/to/private.pem -out /dir/to/private_key.pem -nocrypt
+----
+
+NOTE: It's unnecessary to, but we should mention not to forget to set the `/dir/to/` part to your folder's directory, where you will store the keys.
+
+Now that this is done, it is time to go to our `application.properties` file and point to the key's location.
+
+[source,application.properties]
+----
+mp.jwt.verify.privatekey.location=path/to/private_key.pem
+mp.jwt.verify.publickey.location=path/to/public_key.pem
+----
+
+TIP: If you decide to store the keys in your application (to keep some default keys for development environments for example), you can do it inside `resources/META-INF` directory, and refer to it, by setting the value `META-INF/path/to/private_key.pem`
+
+==== Configuring the issuing of JWT keys
+
+Since JWT is normally issued by centralized service it is not part of the MicroProfile JWT spec to issue tokens.
+But for convenience we are gonna do it anyways.
+
+Inside your `security` package, create a new class, called `JwtService`
+
+[source,java]
+----
+@ApplicationScoped
+public class JwtService {
+
+    private static final Map<Class<? extends User>, String> ROLE_MAP = Map.of(
+            Author.class, Author.ROLE_NAME,
+            Subscriber.class, Subscriber.ROLE_NAME,
+            Manager.class, Manager.ROLE_NAME
+    );
+
+    private PrivateKey privateKey;
+
+    @Inject
+    @ConfigProperty(name = "mp.jwt.verify.privatekey.location")
+    String keyLocation;
+
+    @PostConstruct
+    public void initializePrivateKey() {
+        try {
+            privateKey = readPrivateKey();  <.>
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    public String generateJWT(User user, long expirationTime) {
+
+        long currentTimeInSeconds = System.currentTimeMillis() / 1000;
+
+        JwtClaimsBuilder claimsBuilder = Jwt.claims();
+        claimsBuilder.issuer("http://localhost");
+        claimsBuilder.upn(user.email);
+        claimsBuilder.subject(ROLE_MAP.get(user.getClass())); <.>
+        claimsBuilder.groups(ROLE_MAP.get(user.getClass()));
+        claimsBuilder.issuedAt(currentTimeInSeconds);
+        claimsBuilder.expiresAt(currentTimeInSeconds + 1800); // 30 minutes <.>
+
+        claimsBuilder.claim(Claims.auth_time.name(), currentTimeInSeconds);
+
+        return claimsBuilder.jws().sign(privateKey);
+    }
+
+    private PrivateKey readPrivateKey() {
+        try (InputStream contentIS = getKeyStream(keyLocation)) {
+            byte[] tmp = new byte[4096];
+            try {
+                int length = contentIS.read(tmp);
+                return decodePrivateKey(new String(tmp, 0, length));
+            } catch (Exception ex) {
+                throw new RuntimeException("Could not read private key", ex);
+            }
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private InputStream getKeyStream(String keyLocation) throws IOException {
+        var key = new File(keyLocation);
+
+        return key.exists() ? new FileInputStream(key) :
+                this.getClass().getClassLoader().getResourceAsStream(keyLocation);
+    }
+
+
+    private static PrivateKey decodePrivateKey(final String pemEncoded) throws Exception{
+        byte[] encodedBytes = toEncodedBytes(pemEncoded);
+
+        PKCS8EncodedKeySpec keySpec = new PKCS8EncodedKeySpec(encodedBytes);
+        KeyFactory keyFactory = KeyFactory.getInstance("RSA");
+        return keyFactory.generatePrivate(keySpec);
+    }
+
+    private static byte[] toEncodedBytes(final String pemEncoded) {
+        final String normalizedPem = removeBeginEnd(pemEncoded);
+        return Base64.getDecoder().decode(normalizedPem);
+    }
+
+    private static String removeBeginEnd(String pem) {
+        pem = pem.replaceAll("-----BEGIN (.*)-----", "");
+        pem = pem.replaceAll("-----END (.*)----", "");
+        pem = pem.replaceAll("\r\n", "");
+        pem = pem.replaceAll("\n", "");
+        return pem.trim();
+    }
+
+}
+
+----
+<.> As a start we need to manually parse the private key, from the file location we pointed in `application.properties`.
+<.> Here we set the role both in `subject` and `groups`.
+Some clients may want to read it from either location.
+<.> Json Web Tokens are meant to be temporal, just like any user session. 
+Just like cookies if the users are not careful, they might get their JWTs stolen.
+It is recommended that we keep sessions small, and ask the user to issue a new JWT. 
+Thirty minutes is just about ok.
+
+Other methods are just involved around reading the key and doing some encoding.
+
+Next step is to invoke the method inside the `login` endpoint.
+
+[source,java]
+----
+@RequestScoped
+@Path("user")
+public class UserResource {
+
+    //some definitions
+
+    @Inject
+    JwtService jwtService;
+
+    // some more methods
+
+
+    @POST
+    @Path("login")
+    @Consumes(MediaType.APPLICATION_JSON)
+    public Response loginUser(@Valid @NotNull LoginDTO login) {
+        Optional<User> loggedUser = userService.loginUser(login.getUserName(), login.getPassword());
+        return loggedUser
+                .map(u -> Response.ok(new UserDTO(u))
+                        .header("Authorization", jwtService.generateJWT(u)) // Don't miss our jwt
+                        .build())
+                .orElseGet(() -> Response.status(Response.Status.UNAUTHORIZED).build());
+    }
+
+}
+----
+
+Now if we make login request, we should see our JWT in the response header.
+
+[source,curl]
+----
+curl -i --location --request POST 'localhost:8080/user/login' \
+--header 'Content-Type: application/json' \
+--data-raw '{
+    "password": "manager",
+    "userName": "manager"
+}'
+----
+
+The response will be:
+
+[source,json]
+----
+HTTP/1.1 200 OK
+Authorization: eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJpc3MiOiJodHRwczovL2xvY2FsaG9zdCIsInVwbiI6Im1hbmFnZXJAdmlkYS1zb2Z0LmNvbSIsInN1YiI6IkFVVEhPUiIsImlhdCI6MTY2NDk5MDkyNiwiZXhwIjoxNjY0OTkyNzI2LCJncm91cHMiOlsiQVVUSE9SIl0sImF1dGhfdGltZSI6MTY2NDk5MDkyNiwianRpIjoiZWQ5MjI3NmItYjU0OC00N2IxLWI0MDItYWFkOTM3MDBlZDliIn0.rbapv2SnatBCkYEW4nnCOt9fXTtfetZ3fC2AIK9j7lN3LzKcdmP2TDGoL8uBABpj6vQGt5LRHMKqwcgSvVCiFyK13x0Mbu7lPYBAx1QZsMk7AX-zef8Dq17P-nrGTY6LgqGgpKmMBtBtpNBnqzSGPZpryv7PcYRS0OE0fYXPvtgafsINEE4TVKdwk6XoPOCLOv3pr0_cdA8Wf9AthNNcJN2Xsn1b2IALCAQlQSCRvCTdCZ_-unF1Rk3ivMmkRuLJGh4WudCW5T7GRWgZgbCq7KWVZlzG3WAb07bTsF55Oh0O_CDmbk91M1On1g7ouyxHdVyVSkYnTgPL-xSlGoE5yQ
+Content-Type: application/json
+content-length: 94
+
+{"email":"manager@vida-soft.com","firstName":"Manager","lastName":"User","userName":"manager"}
+----
+
+And if we take that key and decode it, we are going to see the following json.
+
+[{"typ":"JWT","alg":"RS256"}{"iss":"http://localhost","upn":"manager@vida-soft.com","sub":"AUTHOR","iat":1664990661,"exp":1664992461,"groups":["AUTHOR"],"auth_time":1664990661,"jti":"ea840b5b-5ac5-4000-981b-bb69d9ba2776"}.{someRandomKey}]

@@ -396,4 +396,9 @@ public interface SpendPalClient {
 Now you should be able to perform payments again.
  +
 And finally a bonus approach. 
-You can use the annotation `@ClientHeaderParam` for headers which are not susceptible to change. 
+You can use the annotation `@ClientHeaderParam` for headers which are not susceptible to change.
+
+=== What's next?
+
+In the next chapter we are going to continue with MicroProfile specs and introduce you to JWT role-based access control.
+This will help us control the access of the endpoints of our application.
