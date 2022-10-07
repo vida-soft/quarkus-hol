@@ -11,11 +11,12 @@ import javax.persistence.NamedQuery;
 import java.util.Set;
 
 @Entity
-@NamedQuery(name = Article.GET_ARTICLE_WITH_COMMENTS,
-        query = "select new com.vidasoft.magman.model.ArticleWithComment(a, c) from Article a left join Comment c on c.article = a where a.id = :articleId")
+@NamedQuery(name = Article.DELETE_ARTICLE_IF_ALLOWED,
+        query = "delete from Article a where a.id = :articleId and (a.author.id = :userId or (select count (m) from Manager m where m.id = :userId) > 0)")
 public class Article extends PublishedContent {
 
-    public static final String GET_ARTICLE_WITH_COMMENTS = "Article.getArticleWithComments";
+    public static final String DELETE_ARTICLE_IF_ALLOWED = "Article.deleteArticleIfAllowed";
+
     public String title;
 
     @Column(length = 10_000)
@@ -38,5 +39,13 @@ public class Article extends PublishedContent {
         this.title = title;
         this.content = content;
         this.author = author;
+    }
+
+    public static void delete(long articleId, long userId) {
+        Comment.deleteAllForArticle(articleId, userId);
+        getEntityManager().createNamedQuery(DELETE_ARTICLE_IF_ALLOWED)
+                .setParameter("articleId", articleId)
+                .setParameter("userId", userId)
+                .executeUpdate();
     }
 }

@@ -910,7 +910,7 @@ public interface ArticleService {
 
     Article createArticle(String title, String content, Author author);
 
-    void editArticle(Article article, String title, String content);
+    boolean editArticle(Article article, String title, String content);
 
 }
 
@@ -923,10 +923,14 @@ public class ArticleServiceImpl implements ArticleService {
     public Article createArticle(String title, String content, Author author) {...}
 
     @ModifiesContent
-    public void editArticle(Article article, String title, String content) {...}
+    public boolean editArticle(Article article, String title, String content) {...}
 
 }
 ----
+
+CAUTION: Creating a decorator will require all interface methods to return a value.
+That's why we set the return type of `editArticle` to boolean.
+Otherwise it will throw an error `java.lang.VerifyError: Method expects a return value`.
 
 Then it's time to build our decorator class.
 

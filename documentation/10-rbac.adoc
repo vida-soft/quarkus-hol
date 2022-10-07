@@ -173,7 +173,7 @@ public class JwtService {
 
         JwtClaimsBuilder claimsBuilder = Jwt.claims();
         claimsBuilder.issuer("http://localhost");
-        claimsBuilder.upn(user.email);
+        claimsBuilder.upn(user.id + "");
         claimsBuilder.subject(ROLE_MAP.get(user.getClass())); <.>
         claimsBuilder.groups(ROLE_MAP.get(user.getClass()));
         claimsBuilder.issuedAt(currentTimeInSeconds);
@@ -288,7 +288,7 @@ The response will be:
 [source,json]
 ----
 HTTP/1.1 200 OK
-Authorization: eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJpc3MiOiJodHRwczovL2xvY2FsaG9zdCIsInVwbiI6Im1hbmFnZXJAdmlkYS1zb2Z0LmNvbSIsInN1YiI6IkFVVEhPUiIsImlhdCI6MTY2NDk5MDkyNiwiZXhwIjoxNjY0OTkyNzI2LCJncm91cHMiOlsiQVVUSE9SIl0sImF1dGhfdGltZSI6MTY2NDk5MDkyNiwianRpIjoiZWQ5MjI3NmItYjU0OC00N2IxLWI0MDItYWFkOTM3MDBlZDliIn0.rbapv2SnatBCkYEW4nnCOt9fXTtfetZ3fC2AIK9j7lN3LzKcdmP2TDGoL8uBABpj6vQGt5LRHMKqwcgSvVCiFyK13x0Mbu7lPYBAx1QZsMk7AX-zef8Dq17P-nrGTY6LgqGgpKmMBtBtpNBnqzSGPZpryv7PcYRS0OE0fYXPvtgafsINEE4TVKdwk6XoPOCLOv3pr0_cdA8Wf9AthNNcJN2Xsn1b2IALCAQlQSCRvCTdCZ_-unF1Rk3ivMmkRuLJGh4WudCW5T7GRWgZgbCq7KWVZlzG3WAb07bTsF55Oh0O_CDmbk91M1On1g7ouyxHdVyVSkYnTgPL-xSlGoE5yQ
+Authorization: eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJpc3MiOiJodHRwczovL2xvY2FsaG9zdCIsInVwbiI6Im1hbmFnZXJAdmlkYS1zb2Z0LmNvbSIsInN1YiI6Ik1BTkFHRVIiLCJpYXQiOjE2NjUwNzA2NDcsImV4cCI6MTY2NTA3MjQ0NywiZ3JvdXBzIjpbIk1BTkFHRVIiXSwiYXV0aF90aW1lIjoxNjY1MDcwNjQ3LCJqdGkiOiJhNWI0MDQzYS03YjA1LTRhNTktOWFiMS03YzM0MWI4MTMwZDUifQ.NLGCkTVAWjoRGxR40whId55NMQKLmJVt3wvh-dliooHxkpXHcGBxa260QpMDJ_Aok6uSE2qS2r-POXyl7lsSvx_YkdTzEJEKrJlN-_9c6yqVYioa5N9vaa83FYpyGHgxtzf67UnWTiDsM_A-_KhRrgN9f3uGaQCqhh4XIg3PbG2VGC2gVNTlhnFsyNBArC2igux00ZiXeJrUFqaWskbN4nKVrv_ADXBVsL0GJj9A-ltqkbo8e-gOgRgS084IcAkHCOSbChTYTE4u9bNr65hGAgentZvwIvr70SQvwlnY7JqXiYMTwln1acnamMUM5r4bz8p2s37pol9psZhOrdDUzg
 Content-Type: application/json
 content-length: 94
 
@@ -297,4 +297,224 @@ content-length: 94
 
 And if we take that key and decode it, we are going to see the following json.
 
-[{"typ":"JWT","alg":"RS256"}{"iss":"http://localhost","upn":"manager@vida-soft.com","sub":"AUTHOR","iat":1664990661,"exp":1664992461,"groups":["AUTHOR"],"auth_time":1664990661,"jti":"ea840b5b-5ac5-4000-981b-bb69d9ba2776"}.{someRandomKey}]
+[source,json]
+----
+{
+    "typ": "JWT",
+    "alg": "RS256"
+}{
+    "iss": "https://localhost",
+    "upn": "manager@vida-soft.com",
+    "sub": "MANAGER",
+    "iat": 1665070647,
+    "exp": 1665072447,
+    "groups": [
+        "MANAGER"
+    ],
+    "auth_time": 1665070647,
+    "jti": "a5b4043a-7b05-4a59-9ab1-7c341b8130d5"
+}K)TG0y(V*()\wD)02:!6-^+O1	ɔ߿βV"MqX!sԝd?ʅ7f
+ar QMNXg̍
+(.MwAjik$l')Z�[bcǾ-<�pIM[
+        6` z{Y/B%ɩx1<%VPkk7%
+L
+----
+
+The characters at the end resemble the signature, we did with our private key.
+
+=== Using MP JWT API
+
+Now since we are able to issue JWT tokens, we can move onto setting protection to our endpoints.
+The first annotation we are going to look at is `@Authenticated`.
+
+==== The `@Authenticated` annotation
+
+This annotation works both on class and on method level.
+By default adding the JWT extension does not protect your endpoints from access.
+You wouldn't have been able to use the login endpoint if they were.
+When you want to protect a single/all endpoints of a resource class, without limiting the users' access to it, you can just use the `@Authorized` annotation.
+This will make the access to an endpoint restricted only for the non-authorized users.
+
+To test this, let's place the annotation on `ArticleResource` and try to get all articles.
+
+[source,curl]
+----
+curl -i --location --request GET 'http://localhost:8080/article/'
+----
+
+You will immediately get a response:
+
+[source,text]
+----
+HTTP/1.1 401 Unauthorized
+www-authenticate: Bearer
+content-length: 0
+----
+
+The call won't even enter the method.
+Since you already know how interceptors work, you get the idea how this worked.
+
+Now let's try again, by getting our authentication token and build a query, that will let us view all articles
+
+[source,curl]
+----
+curl -i --location --request GET 'http://localhost:8080/article/' \
+--header 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJpc3MiOiJodHRwczovL2xvY2FsaG9zdCIsInVwbiI6Im1hbmFnZXJAdmlkYS1zb2Z0LmNvbSIsInN1YiI6Ik1BTkFHRVIiLCJpYXQiOjE2NjUwNzA2NDcsImV4cCI6MTY2NTA3MjQ0NywiZ3JvdXBzIjpbIk1BTkFHRVIiXSwiYXV0aF90aW1lIjoxNjY1MDcwNjQ3LCJqdGkiOiJhNWI0MDQzYS03YjA1LTRhNTktOWFiMS03YzM0MWI4MTMwZDUifQ.NLGCkTVAWjoRGxR40whId55NMQKLmJVt3wvh-dliooHxkpXHcGBxa260QpMDJ_Aok6uSE2qS2r-POXyl7lsSvx_YkdTzEJEKrJlN-_9c6yqVYioa5N9vaa83FYpyGHgxtzf67UnWTiDsM_A-_KhRrgN9f3uGaQCqhh4XIg3PbG2VGC2gVNTlhnFsyNBArC2igux00ZiXeJrUFqaWskbN4nKVrv_ADXBVsL0GJj9A-ltqkbo8e-gOgRgS084IcAkHCOSbChTYTE4u9bNr65hGAgentZvwIvr70SQvwlnY7JqXiYMTwln1acnamMUM5r4bz8p2s37pol9psZhOrdDUzg'
+----
+
+IMPORTANT: Using the `Bearer` word, before passing the token is mandatory.
+The authorization header can take different types of authorization tokens, and specifying the type of authentication before passing the token is needed.
+If you miss it, the authentication will not work.
+
+==== The `@RolesAllowed` annotation
+
+This annotation will limit the access to users with certain role.
+It could be placed on a method or a class level.
+Placing this on a method or a class, fully replaces the `@Authenticated` annotation. Just as the `@Authenticated` 's documentation states - _"Indicates that a resource can only be accessed by a logged in user. This is equivalent to the Jakarta EE8 RolesAllowed("**") construct."_
+
+For our ArticleResource we want articles to only be created/edited by Authors, deleted by Authors and Managers, and the manager should be able to control the advertisers on an article.
+To achieve this behavior, we need to do it like this:
+
+[source,java]
+----
+@Authenticated
+@RequestScoped
+@Path("/article")
+public class ArticleResource {
+
+    @Inject
+    ArticleService articleService;
+
+    @POST
+    @Transactional
+    @RolesAllowed({Author.ROLE_NAME})
+    @Consumes(MediaType.APPLICATION_JSON)
+    public Response createArticle(@Valid @NotNull ArticleDTO articleDTO) {...}
+
+    @GET
+    @Path("/{id}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getArticle(@Positive @PathParam("id") Long articleId) {...}
+
+    @PUT
+    @Transactional
+    @Path("/{id}")
+    @RolesAllowed({Author.ROLE_NAME})
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response editArticle(@Positive @PathParam("id") Long articleId, @Valid @NotNull ArticleDTO articleDTO) {...}
+
+    @DELETE
+    @Transactional
+    @Path("/{id}")
+    @RolesAllowed({Author.ROLE_NAME, Manager.ROLE_NAME})
+    public void deleteArticle(@Positive @PathParam("id") Long articleId) {...}
+
+    @GET
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getArticles(@QueryParam("page") @DefaultValue("1") @Positive int page,
+                                @QueryParam("size") @DefaultValue("10") @Positive int size,
+                                @QueryParam("author") @Positive Long authorId) {...}
+
+    @PATCH
+    @Transactional
+    @RolesAllowed({Manager.ROLE_NAME})
+    @Path("{id}/advertiser/{advertiserId}")
+    public Response addAdvertiserToArticle(@Positive @PathParam("id") Long id, @Positive @PathParam("advertiserId") Long advertiserId) {...}
+}
+----
+
+We are going to leave the `@GET` methods alone, as they need to be accessed by all users.
+Now if we try to create an article with the manager or any other than author user, we are going to get:
+
+[source,text]
+----
+HTTP/1.1 403 Forbidden
+content-length: 0
+----
+
+If you use the right roles required for the annotations, you are going to get access to the endpoint.
+If not, you are never going to be able to access them.
+
+=== Getting data from the JWT
+
+Sometimes restricting the access by role is not enough.
+For example we do not want one author to edit the article of another author.
+Also when an author creates an article, we want to identify them, without making them do it, by passing the `authorId` in the DTO.
+We can already get that from the token.
+
+Let's make a `@PostConstruct` method which is going to help us identify the user, before going to the article methods.
+
+[source,java]
+----
+public class ArticleResource {
+    
+    @Inject
+    JsonWebToken jwt; <.>
+
+    User loggedUser;
+
+    @PostConstruct
+    void init() {
+        Long userId = Long.parseLong(jwt.getClaim("upn")); <.>
+        loggedUser = User.findById(userId); <.>
+    }
+
+    // sweet, sweet endpoints ahead
+}
+----
+<.> Just like everything CDI-ish, we can inject an instance of the `JsonWebToken` class, which holds the user's token deconstructed.
+<.> Then from that token, we can take the user's id from the `upn` claim.
+This is where we previously contained the user id, when we made the claim issuing code.
+The `upm` claim is the standard place, where you will place identification details about the user.
+<.> Since `upn` claim takes only string as a value, then we need to parse it back to long and use it in a query.
+
+Next step is to update the methods which require to check the user that is performing the operation.
+
+[source,java]
+----
+public class ArticleResource {
+
+    public Response createArticle(@Valid @NotNull ArticleDTO articleDTO) {
+        Author author = (Author) loggedUser;
+        if (author == null) {
+            return Response.status(Response.Status.BAD_REQUEST).build();
+        } else {
+            Article article = articleService.createArticle(articleDTO.getTitle(), articleDTO.getContent(), author);
+            return Response.created(URI.create(String.format("article/%s", article.id))).build();
+        }
+    }
+
+    public Response editArticle(@Positive @PathParam("id") Long articleId, @Valid @NotNull ArticleDTO articleDTO) {
+        Article article = Article.findById(articleId);
+
+        if (article == null) {
+            return Response.status(Response.Status.NOT_FOUND).build();
+        } else if (!loggedUser.equals(article.author)) { <.>
+            return Response.status(Response.Status.FORBIDDEN).build();
+        } else {
+            articleService.editArticle(article, articleDTO.getTitle(), articleDTO.getContent());
+            return Response.ok(new ArticleDTO(article)).build();
+        }
+    }
+
+    @DELETE
+    @Transactional
+    @Path("/{id}")
+    @RolesAllowed({Author.ROLE_NAME, Manager.ROLE_NAME})
+    public void deleteArticle(@Positive @PathParam("id") Long articleId) {
+        Article.delete(articleId, loggedUser.id); <.>
+    }
+}
+----
+<.> Assuming AbstractEntity.equals is overridden
+<.> Here we have added a named query into `Article` entity, to delete an article where the author's id matches the one of the logged user or if the user is a manager: `delete from Article a where a.id = :articleId and (a.author.id = :userId or (select count (m) from Manager m where m.id = :userId) > 0)`.
+Don't forget to surround the part starting from `author.id` with brackets, otherwise you are going to delete all articles when you do it with the manager.
+
+TIP: You should also create methods to delete all related to the article comments, beforehand.
+
+=== What can I do now?
+
+Now you have all the basis of RBAC with MP JWT.
+Why don't you get a bit wild, and start protecting all of your endpoints in a way that it would make sense.
+You could also create a producer for the logged user, to avoid making the same `@PostConstruct` method everywhere when you need it.

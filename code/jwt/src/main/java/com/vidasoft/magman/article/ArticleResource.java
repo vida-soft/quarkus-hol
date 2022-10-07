@@ -3,6 +3,10 @@ package com.vidasoft.magman.article;
 import com.vidasoft.magman.model.Advertiser;
 import com.vidasoft.magman.model.Article;
 import com.vidasoft.magman.model.Author;
+import com.vidasoft.magman.model.Manager;
+import com.vidasoft.magman.model.User;
+import com.vidasoft.magman.security.LoggedUser;
+import io.quarkus.security.Authenticated;
 
 import javax.annotation.security.RolesAllowed;
 import javax.enterprise.context.RequestScoped;
@@ -28,19 +32,24 @@ import java.net.URI;
 import java.util.List;
 import java.util.stream.Collectors;
 
+@Authenticated
 @RequestScoped
 @Path("/article")
 public class ArticleResource {
 
     @Inject
-    ArticleServiceImpl articleService;
+    ArticleService articleService;
+
+    @Inject
+    @LoggedUser
+    User loggedUser;
 
     @POST
     @Transactional
     @RolesAllowed({Author.ROLE_NAME})
     @Consumes(MediaType.APPLICATION_JSON)
     public Response createArticle(@Valid @NotNull ArticleDTO articleDTO) {
-        Author author = Author.findById(articleDTO.getAuthorId());
+        Author author = (Author) loggedUser;
         if (author == null) {
             return Response.status(Response.Status.BAD_REQUEST).build();
         } else {
@@ -59,15 +68,18 @@ public class ArticleResource {
     }
 
     @PUT
+    @Transactional
     @Path("/{id}")
+    @RolesAllowed({Author.ROLE_NAME})
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
-    @Transactional
     public Response editArticle(@Positive @PathParam("id") Long articleId, @Valid @NotNull ArticleDTO articleDTO) {
         Article article = Article.findById(articleId);
 
         if (article == null) {
             return Response.status(Response.Status.NOT_FOUND).build();
+        } else if (!loggedUser.equals(article.author)) {                //assuming AbstractEntity.equals is overridden
+            return Response.status(Response.Status.FORBIDDEN).build();
         } else {
             articleService.editArticle(article, articleDTO.getTitle(), articleDTO.getContent());
             return Response.ok(new ArticleDTO(article)).build();
@@ -75,10 +87,11 @@ public class ArticleResource {
     }
 
     @DELETE
-    @Path("/{id}")
     @Transactional
+    @Path("/{id}")
+    @RolesAllowed({Author.ROLE_NAME, Manager.ROLE_NAME})
     public void deleteArticle(@Positive @PathParam("id") Long articleId) {
-        Article.delete("id", articleId);
+        Article.delete(articleId, loggedUser.id);
     }
 
     @GET
@@ -97,6 +110,7 @@ public class ArticleResource {
 
     @PATCH
     @Transactional
+    @RolesAllowed({Manager.ROLE_NAME})
     @Path("{id}/advertiser/{advertiserId}")
     public Response addAdvertiserToArticle(@Positive @PathParam("id") Long id, @Positive @PathParam("advertiserId") Long advertiserId) {
         Article article = Article.findById(id);

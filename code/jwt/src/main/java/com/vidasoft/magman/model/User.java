@@ -24,4 +24,6 @@ public abstract class User extends AbstractEntity {
         this.lastName = lastName;
         this.email = email;
     }
+
+
 }

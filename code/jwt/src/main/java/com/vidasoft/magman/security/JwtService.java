@@ -52,7 +52,7 @@ public class JwtService {
 
         JwtClaimsBuilder claimsBuilder = Jwt.claims();
         claimsBuilder.issuer("https://localhost");
-        claimsBuilder.upn(user.email);
+        claimsBuilder.upn(user.id + "");
         claimsBuilder.subject(ROLE_MAP.get(user.getClass()));
         claimsBuilder.issuedAt(currentTimeInSeconds);
         claimsBuilder.expiresAt(currentTimeInSeconds + 1800); // 30 minutes

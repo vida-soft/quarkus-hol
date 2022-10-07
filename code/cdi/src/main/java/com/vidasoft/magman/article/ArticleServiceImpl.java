@@ -23,9 +23,11 @@ public class ArticleServiceImpl implements ArticleService {
     }
 
     @ModifiesContent
-    public void editArticle(Article article, String title, String content) {
+    public boolean editArticle(Article article, String title, String content) {
         article.title = title;
         article.content = content;
+
+        return true;
     }
 
 }

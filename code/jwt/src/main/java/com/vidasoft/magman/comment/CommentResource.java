@@ -3,7 +3,9 @@ package com.vidasoft.magman.comment;
 import com.vidasoft.magman.model.Article;
 import com.vidasoft.magman.model.Comment;
 import com.vidasoft.magman.model.User;
+import com.vidasoft.magman.security.LoggedUser;
 import com.vidasoft.magman.validator.ValidationService;
+import io.quarkus.security.Authenticated;
 
 import javax.inject.Inject;
 import javax.persistence.EntityManager;
@@ -23,6 +25,7 @@ import java.net.URI;
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
 
+@Authenticated
 @Path("/article/{id}/comment")
 public class CommentResource {
 
@@ -31,6 +34,10 @@ public class CommentResource {
 
     @Inject
     ValidationService validationService;
+
+    @Inject
+    @LoggedUser
+    User loggedUser;
 
     @POST
     @Transactional
@@ -41,17 +48,12 @@ public class CommentResource {
             return Response.status(Response.Status.BAD_REQUEST).entity(commentViolations).build();
         }
 
-        User author = User.findById(commentDTO.getAuthorId());
-        if (author == null) {
-            return Response.status(Response.Status.BAD_REQUEST).build();
-        }
-
         Article article = Article.findById(articleId);
         if (article == null) {
             return Response.status(Response.Status.NOT_FOUND).build();
         }
 
-        Comment comment = commentService.createComment(commentDTO.getContent(), author, article);
+        Comment comment = commentService.createComment(commentDTO.getContent(), loggedUser, article);
 
         return Response.created(URI.create(String.format("/article/%d/comment/%d", articleId, comment.id))).build();
     }

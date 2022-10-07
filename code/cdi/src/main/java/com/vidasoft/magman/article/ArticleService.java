@@ -11,6 +11,6 @@ public interface ArticleService {
 
     Article createArticle(String title, String content, Author author);
 
-    void editArticle(Article article, String title, String content);
+    boolean editArticle(Article article, String title, String content);
 
 }
