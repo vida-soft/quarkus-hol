@@ -6,8 +6,8 @@ import com.vidasoft.magman.model.Subscriber;
 import com.vidasoft.magman.model.User;
 import com.vidasoft.magman.security.PasswordService;
 
-import javax.enterprise.context.ApplicationScoped;
-import javax.inject.Inject;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
 import java.time.LocalDate;
 import java.util.Optional;
 

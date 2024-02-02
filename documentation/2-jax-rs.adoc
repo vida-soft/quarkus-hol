@@ -44,7 +44,7 @@ Each of those are defining the action you intent to do with the data.
 This helps the server to choose what value to set to the `Content-Type` header, and how to convert the data, passed through the response.
 The value can be set to a method or a class, if all the methods are returning the same response time within it.
 <.> In JAX-RS you have two ways to return a response.
-If your request's response is simple, you can directly set the return value, which will populate the response's body. But if you would like to return different types of responses, then you'll have to use `javax.ws.rs.Response` and create your custom responses.
+If your request's response is simple, you can directly set the return value, which will populate the response's body. But if you would like to return different types of responses, then you'll have to use `jakarta.ws.rs.Response` and create your custom responses.
 So when you need to return void or an object, `JAX-RS` will behave in the following way:
 
 * When your method returns `void`, the response will be `204 NO CONTENT`.
@@ -164,7 +164,7 @@ In the next chapter we will introduce database for this purpose.
 It has similar behavior as `@Produces`.
 If the annotation isn't used RestEasy will use whatever type is defined in the `Accept` header of the request.
 
-<.> Here we use `javax.ws.rs.Response` to return a custom response to the client `201 CREATED`.
+<.> Here we use `jakarta.ws.rs.Response` to return a custom response to the client `201 CREATED`.
 This response is the most appropriately accepted when creating new entities.
 It is specified to contain a path for `GET` requests regarding that entity.
 
@@ -226,7 +226,7 @@ public class ArticleResource {
     @Path("/{id}") <.>
     @Produces(MediaType.APPLICATION_JSON)
     public Response getArticle(@PathParam("id") Long articleId) { <.>
-        if (articleId < 1>) {
+        if (articleId < 1) {
             return Response.status(Response.Status.BAD_REQUEST).build(); <.>
         } else if(articles.get(articleId) == null) {
             return Response.status(Response.Status.NOT_FOUND).build(); <.>

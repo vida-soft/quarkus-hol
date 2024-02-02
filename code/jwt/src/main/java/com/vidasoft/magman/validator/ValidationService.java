@@ -1,9 +1,10 @@
 package com.vidasoft.magman.validator;
 
-import javax.annotation.PostConstruct;
-import javax.enterprise.context.ApplicationScoped;
-import javax.validation.Validation;
-import javax.validation.Validator;
+import jakarta.annotation.PostConstruct;
+
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.validation.Validation;
+import jakarta.validation.Validator;
 import java.util.List;
 import java.util.stream.Collectors;
 

@@ -31,7 +31,7 @@ Stuff you might never need to use and stuff that is taking up your system memory
 This makes conventional java servers inappropriate for running on small environments or being used as a serverless solution.
 
 These are the most obvious ones.
-You can go on with as many examples you want, but let's see how Quarkust tackles those:
+You can go on with as many examples you want, but let's see how Quarkus tackles those:
 
 * Difficulty during setup - setting up your project is as easy as it can be.
 When getting started, you can go to https://code.quarkus.io[code.quarkus.io] and build your project template from scratch or use Quarkus CLI, or Maven to choose how to configure your project.

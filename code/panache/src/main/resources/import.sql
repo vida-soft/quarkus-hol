@@ -13,4 +13,5 @@ values (3, 0, 'The quick brown fox runs over the lazy dog.', '2022-01-12', 'Arti
         'I love Quarkus and Quarkus loves me back', 2);
 
 
-alter sequence HIBERNATE_SEQUENCE restart with 7;
+alter sequence USERS_SEQ restart with 10;
+alter sequence ARTICLE_SEQ restart with 10;

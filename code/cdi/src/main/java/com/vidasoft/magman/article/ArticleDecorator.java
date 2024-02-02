@@ -4,9 +4,9 @@ import com.vidasoft.magman.advertiser.producers.Gold;
 import com.vidasoft.magman.model.Advertiser;
 import com.vidasoft.magman.model.Article;
 
-import javax.decorator.Decorator;
-import javax.decorator.Delegate;
-import javax.inject.Inject;
+import jakarta.decorator.Decorator;
+import jakarta.decorator.Delegate;
+import jakarta.inject.Inject;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;

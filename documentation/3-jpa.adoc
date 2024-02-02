@@ -110,7 +110,7 @@ After that's been done, let's start shaping our model classes...
 
 === Defining object-relational mapping with JPA 
 
-NOTE: Depending on the version of Java you use, the following annotations could be found either in packages `javax.persistence` or `jakarta.persistence`.
+NOTE: Depending on the version of Java you use, the following annotations could be found either in packages `jakarta.persistence` or `jakarta.persistence`.
 
 Starting off with the User class, the first and most important thing we'll need to set is the annotation `@Entity`.
 This is an annotation, telling JPA, that this class is used in relation with a database table.
@@ -1067,7 +1067,10 @@ values (3, 0, 'The quick brown fox runs over the lazy dog.', '2022-01-12', 'Arti
         'I love Quarkus and Quarkus loves me back', 2);
 
 
-alter sequence HIBERNATE_SEQUENCE restart with 7;
+alter sequence USERS_SEQ restart with 10;
+alter sequence ARTICLE_SEQ restart with 10;
+alter sequence COMMENT_SEQ restart with 10;
+alter sequence ADVERTISER_SEQ restart with 10;
 ----
 
 Now every time the application has started, reloaded it will insert those entries, so the database will always be filled with some data.

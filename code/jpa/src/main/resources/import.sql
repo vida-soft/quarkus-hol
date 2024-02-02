@@ -11,6 +11,3 @@ values (3, 0, 'The quick brown fox runs over the lazy dog.', '2022-01-12', 'Arti
         'The way I became Java developer', 2),
        (6, 0, 'This is my extreme enjoyment of Quarkus, written in an article', '2022-09-13',
         'I love Quarkus and Quarkus loves me back', 2);
-
-
-alter sequence HIBERNATE_SEQUENCE restart with 7;

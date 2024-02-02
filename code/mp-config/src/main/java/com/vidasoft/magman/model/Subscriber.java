@@ -1,7 +1,7 @@
 package com.vidasoft.magman.model;
 
-import javax.persistence.Embedded;
-import javax.persistence.Entity;
+import jakarta.persistence.Embedded;
+import jakarta.persistence.Entity;
 import java.time.LocalDate;
 
 @Entity

@@ -3,8 +3,8 @@ package com.vidasoft.magman.advertiser;
 import com.vidasoft.magman.model.Advertiser;
 import com.vidasoft.magman.model.SponsorPackage;
 
-import javax.enterprise.context.ApplicationScoped;
-import javax.transaction.Transactional;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.transaction.Transactional;
 
 @ApplicationScoped
 public class AdvertiserService {

@@ -1,6 +1,6 @@
 package com.vidasoft.magman.user;
 
-import javax.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotBlank;
 
 public class LoginDTO {
 

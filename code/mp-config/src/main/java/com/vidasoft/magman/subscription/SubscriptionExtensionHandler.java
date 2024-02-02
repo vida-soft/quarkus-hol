@@ -2,11 +2,10 @@ package com.vidasoft.magman.subscription;
 
 import com.vidasoft.magman.model.Subscriber;
 import io.smallrye.config.Priorities;
-
-import javax.annotation.Priority;
-import javax.enterprise.context.control.ActivateRequestContext;
-import javax.enterprise.event.Observes;
-import javax.transaction.Transactional;
+import jakarta.annotation.Priority;
+import jakarta.enterprise.context.control.ActivateRequestContext;
+import jakarta.enterprise.event.Observes;
+import jakarta.transaction.Transactional;
 import java.util.List;
 import java.util.logging.Level;
 import java.util.logging.Logger;

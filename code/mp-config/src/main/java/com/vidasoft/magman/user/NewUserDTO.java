@@ -2,7 +2,7 @@ package com.vidasoft.magman.user;
 
 import com.vidasoft.magman.validator.Password;
 
-import javax.validation.constraints.NotNull;
+import jakarta.validation.constraints.NotNull;
 
 public class NewUserDTO extends UserDTO {
 

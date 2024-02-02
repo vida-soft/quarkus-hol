@@ -21,4 +21,7 @@ values (0, 'sarah@google.space', 'Sarah', 'Connor', 'sarAPass', 'sarah_9645', 'H
        (0, 'kchuck@pongo.eu', 'Chuck', 'Keith', 'chUk', 'chuck_0998', 'Sausage Str.', '2024-01-14', 'AMERICAN_EXPRESS',
         '3698521479', 'Subscriber', 9);
 
-alter sequence HIBERNATE_SEQUENCE restart with 10;
+alter sequence USERS_SEQ restart with 10;
+alter sequence ARTICLE_SEQ restart with 10;
+alter sequence COMMENT_SEQ restart with 10;
+alter sequence ADVERTISER_SEQ restart with 10;

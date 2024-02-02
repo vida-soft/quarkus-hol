@@ -3,10 +3,10 @@ package com.vidasoft.magman.security;
 import com.vidasoft.magman.model.User;
 import org.eclipse.microprofile.jwt.JsonWebToken;
 
-import javax.enterprise.context.Dependent;
-import javax.enterprise.context.RequestScoped;
-import javax.enterprise.inject.Produces;
-import javax.inject.Inject;
+import jakarta.enterprise.context.Dependent;
+import jakarta.enterprise.context.RequestScoped;
+import jakarta.enterprise.inject.Produces;
+import jakarta.inject.Inject;
 
 @RequestScoped
 public class LoggedUserProducer {

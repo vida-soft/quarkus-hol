@@ -5,7 +5,7 @@ import com.vidasoft.magman.interceptors.ModifiesContent;
 import com.vidasoft.magman.model.Article;
 import com.vidasoft.magman.model.Author;
 
-import javax.enterprise.context.ApplicationScoped;
+import jakarta.enterprise.context.ApplicationScoped;
 import java.util.Optional;
 
 @ApplicationScoped

@@ -100,7 +100,7 @@ We can do it either inside `RegisterRestClient` annotation, or use the recommend
 [source,application.properties]
 ----
 quarkus.rest-client."com.vidasoft.magman.spendpal.SpendPalClient".url=http://localhost:8081
-quarkus.rest-client."com.vidasoft.magman.spendpal.SpendPalClient".scope=javax.inject.Singleton
+quarkus.rest-client."com.vidasoft.magman.spendpal.SpendPalClient".scope=jakarta.inject.Singleton
 ----
 
 In this scenario you'll need to exactly specify the path of the Client class.
@@ -123,7 +123,7 @@ Then your property file can look like this:
 [source,application.properties]
 ----
 quarkus.rest-client.spendpal-client.url=http://localhost:8081
-quarkus.rest-client.spendpal-client.scope=javax.inject.Singleton
+quarkus.rest-client.spendpal-client.scope=jakarta.inject.Singleton
 ----
 
 Now our properties are shorter and easier to refer to.

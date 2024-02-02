@@ -3,9 +3,9 @@ package com.vidasoft.magman.advertiser.producers;
 import com.vidasoft.magman.model.Advertiser;
 import com.vidasoft.magman.model.SponsorPackage;
 
-import javax.enterprise.context.Dependent;
-import javax.enterprise.inject.Produces;
-import javax.enterprise.inject.spi.InjectionPoint;
+import jakarta.enterprise.context.Dependent;
+import jakarta.enterprise.inject.Produces;
+import jakarta.enterprise.inject.spi.InjectionPoint;
 import java.util.List;
 
 public class AdvertiserProducer {

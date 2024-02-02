@@ -5,9 +5,9 @@ import com.vidasoft.magman.model.Article;
 import com.vidasoft.magman.model.Comment;
 import com.vidasoft.magman.model.User;
 
-import javax.enterprise.context.ApplicationScoped;
-import javax.inject.Inject;
-import javax.persistence.EntityManager;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
+import jakarta.persistence.EntityManager;
 import java.time.LocalDateTime;
 import java.util.Optional;
 

@@ -99,7 +99,7 @@ To achieve the same result, you can simply execute the following line:
 
 [source,cli]
 ----
-mvn io.quarkus.platform:quarkus-maven-plugin:2.12.0.Final:create \
+mvn io.quarkus.platform:quarkus-maven-plugin:3.7.1.Final:create \
     -DprojectGroupId=com.vidasoft \
     -DprojectArtifactId=magman \
     -Dextensions="quarkus-resteasy-jsonb"
@@ -111,8 +111,8 @@ TIP: To view more possibilities to generate and personalize your Quarkus project
 
 ==== What do we need to get started?
 
-* Java 11 or greater
-* Maven 3.6.3 or greater
+* Java 17 or greater
+* Maven 3.9.3 or greater
 * A computer with internet connection
 
 TIP: If you want to work with Quarkus CLI, you would need to install it first.

@@ -699,7 +699,7 @@ To make things cleaner, let's add a new package, called `interceptors`, and add 
 
 [source,java]
 ----
-import javax.interceptor.InterceptorBinding;
+import jakarta.interceptor.InterceptorBinding;
 import java.lang.annotation.Inherited;
 import java.lang.annotation.Retention;
 import java.lang.annotation.Target;
@@ -1139,8 +1139,8 @@ This is mandatory, when there's more than one option to provide instance of a cl
 It is invoked when the annotation above is used with `@Inject` within the definition of a CDI managed class.
 +
 CAUTION: When you import `@Produces`, be sure to check the package, you are importing from.
-It should be either `javax.enterprise.inject.Produces` or `jakarta.enterprise.inject.Produces`.
-You must be careful not to confuse it with `javax.ws.rs.Produces`/`jakarta.ws.rs.Produces`, as you already know that this annotation is used to describe the return type for JAX-RS, which has nothing to do with CDI producers.
+It should be either `jakarta.enterprise.inject.Produces` or `jakarta.enterprise.inject.Produces`.
+You must be careful not to confuse it with `jakarta.ws.rs.Produces`/`jakarta.ws.rs.Produces`, as you already know that this annotation is used to describe the return type for JAX-RS, which has nothing to do with CDI producers.
 
 <.> Each producer method should have a scope, so CDI can decide what instance to create for the injection point.
 The reason we use `@Dependant` scope here is because in order to be able to get the data of that injection point, hence the name of the parameter `InjectionPoint`, we need to have this scope on our producer.
@@ -1360,7 +1360,7 @@ public class PaymentService {
 <.> As any other CDI managed dependency, in order to signal the server that this property is CDI managed, we need to use the `@Inject` annotation.
 <.> To deffer which type of event handlers we are going to call, we add our annotation here.
 It's important to mention that if we do not add the annotation, our handlers won't get called.
-<.> The we define our event with the type of payload we are going to pass. Here we use `javax.enterprise.event.Event` or `jakarta.enterprise.event.Event`, depending on your flavour of enterprise edition of Java.
+<.> The we define our event with the type of payload we are going to pass. Here we use `jakarta.enterprise.event.Event` or `jakarta.enterprise.event.Event`, depending on your flavour of enterprise edition of Java.
 <.> To fire the event, we simply call the `.fire()` method, passing the instance of our payload.
 
 Let's test that and see the results with a user we previously created.
@@ -1382,7 +1382,7 @@ Now it you look at the logs, you will find the following:
 Now this is great, and it seems that the order of invocations are working as expected, but what if we want to flip things around?
 What if we want to first send an email to the user, then update the entity?
  +
-This could be done with the `@javax/jakarta.annotation.Priority` annotation:
+This could be done with the `@jakarta/jakarta.annotation.Priority` annotation:
 
 [source,java]
 ----
