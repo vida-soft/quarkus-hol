@@ -69,16 +69,18 @@ Under `src\main\java\com\vidasoft` add the following classes:
 - `magman.article.ArticleResource`
 - `magman.article.ArticleDTO`
 
-`ArticleResource` will contain all the endpoints needed for our article.
-`ArticleDTO` is the object we are going to pass through requests and responses.
-
+.`ArticleResource` will contain all the endpoints needed for our article.
 [source, java]
 ----
 @Path("/article")
 public class ArticleResource {
 
 }
+----
 
+.`ArticleDTO` is the object we are going to pass through requests and responses.
+[source, java]
+----
 public class ArticleDTO {
 
     private Long id;

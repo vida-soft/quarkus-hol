@@ -11,3 +11,8 @@ values (3, 0, 'The quick brown fox runs over the lazy dog.', '2022-01-12', 'Arti
         'The way I became Java developer', 2),
        (6, 0, 'This is my extreme enjoyment of Quarkus, written in an article', '2022-09-13',
         'I love Quarkus and Quarkus loves me back', 2);
+
+alter sequence USERS_SEQ restart with 10;
+alter sequence ARTICLE_SEQ restart with 10;
+alter sequence COMMENT_SEQ restart with 10;
+alter sequence ADVERTISER_SEQ restart with 10;

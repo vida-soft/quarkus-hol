@@ -1,3 +1,5 @@
+:imagesdir: img
+
 == Java Persistence API (JPA)
 
 One of the core functions of an application server is being to work with a database.
@@ -80,7 +82,7 @@ You can view other examples for database configuration https://quarkus.io/guides
 Now that we have our database configured, let's upgrade our project by creating our database model.
 For that purpose, we are going to follow the diagram below.
 
-image::img/db-model.jpg[align=center]
+image::db-model.jpg[align=center]
 
 First off, create a new package, named `model` under `com.vidasoft.magman`.
 This will help us separate our database ORM layer from the rest of the project.
@@ -1116,7 +1118,7 @@ When the transaction is finished, all the modifications on the article class wil
 Getting an article object doesn’t always mean that you get an article entity. This is because the objects have different states when JPA is regarded.
 The below figure shows how this works:
 
-image::img/entity-state-chart.png[title="Entity state diagram",align="center"]
+image::entity-state-chart.png[title="Entity state diagram",align="center"]
 
 When calling the `persist()` on an entity class, the entity manager, will always try to create a new entity.
 The entity then is tracked by the entity manager (merged) and all the changes done to it, within the `@Transactional` context will be executed upon transaction flushing.

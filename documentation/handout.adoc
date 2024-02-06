@@ -1,0 +1,18 @@
+= Quarkus with JakartaEE: Course Handout
+
+:doctype: book
+:imagesdir: img
+:source-highlighter: coderay
+:icons: font
+
+include::1-introduction.adoc[]
+include::2-jax-rs.adoc[]
+include::3-jpa.adoc[]
+include::4-quarkus-panache.adoc[]
+include::5-jpa-going-deep.adoc[]
+include::6-cdi.adoc[]
+include::7-bean-validation.adoc[]
+include::8-mp-config.adoc[]
+include::9-mp-rest-client.adoc[]
+include::10-rbac.adoc[]
+include::11-kafka-reactive-messaging.adoc[]

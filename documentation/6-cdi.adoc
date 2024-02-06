@@ -1,3 +1,5 @@
+:imagesdir: img
+
 == Dependency injection with Quarkus and Jakarta EE
 
 One of the most relevant and long-lasting concepts in object-oriented programming, embedded into the foundation of all web server frameworks is the Dependency injection.
@@ -499,7 +501,7 @@ If both the encrypted passwords match, then we can return that user to the resou
 
 Now if we try to create a new user and try to query the database, to see how they were created, we'll stumble upon the following result:
 
-image::img/salty-password.jpg[align=center]
+image::salty-password.jpg[align=center]
 
 
 === Injecting `EntityManager` with CDI

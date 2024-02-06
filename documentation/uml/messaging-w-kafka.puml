@@ -1,0 +1,33 @@
+@startuml
+!theme sketchy-outline
+skinparam maxMessageSize 100
+
+[Payments] as P #White
+[Checkout] as C #White
+[Mailing] as M #White
+
+component "Zookeeper" {
+    cloud "Another Broker" as AB #LightGreen
+        cloud "Kafka Broker" as K #LightBlue {
+        component "Orders Topic" as OT {
+            database P1
+            database P2
+        }
+        component "Payments Topic" as PT {
+            database P3
+            database P4
+        }
+    }
+    cloud "Yet another\nbroker broker" as YABB #PeachPuff
+}
+
+K <--down-> AB
+K <--down-> YABB
+AB <-left-> YABB
+
+C .down.> OT: Publishes a message for new order
+P .up.> YABB: Reads next message from Orders Topic
+M .up.> AB: Reads next message from Orders topic
+P .up.> PT: Publishes result
+M <.up. YABB: Reads next message from Paymens topic
+@enduml

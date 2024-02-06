@@ -11,7 +11,7 @@ They have their own servers, host their own applications on the internet and
 publish their APIs (usually endpoints, but sometimes libraries for different languages)
 Then third party web servers, like us, can connect to them and perform financial operations.
 
-In order to charge subscribers when they want to extent their subscription we need such payment provider too.
+In order to charge subscribers when they want to extend their subscription we need such payment provider too.
 But since this is a demo project for our course and we want to just demonstrate how REST client works, we are not going to integrate with the real thing, we are going to create our small dummy payment service.
 
 === Traditional REST communication with Java

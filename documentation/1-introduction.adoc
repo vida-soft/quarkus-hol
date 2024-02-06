@@ -1,3 +1,5 @@
+:imagesdir: img
+
 == Introduction to Quarkus, project setup and structure, developer experience
 
 === Introduction to Quarkus
@@ -26,6 +28,8 @@ Simply refresh the page, or give it another REST call and the app will redeploy 
 
 TIP: You can read more about Quarkus' performance https://quarkus.io/blog/runtime-performance/[here].
 
+NOTE: After Quarkus version 3 all the packages from Java EE are now using Jakarta EE, which means that packages starting with `javax` now start with `jakarta`.
+
 ==== What is this course about?
 
 This course will walk you through the basics of Java/Jakarta EE using the Quarkus development framework.
@@ -47,7 +51,7 @@ Don't worry though, Quarkus has you covered.
 All you need to do is go to https://code.quarkus.io.
 There you will find simple and easy project generator, that will help you to set the name of the project and your package domain (group and artifact id)
 
-image::img/start-with-code-quarkus-io.png[align=center]
+image::start-with-code-quarkus-io.png[align=center]
 
 The interface is quite easy to use and understand.
 You can choose the version of Quarkus, the group and artifact id of your application, the version of the JDK of your application, as well as the version of your application.
@@ -62,14 +66,14 @@ More of that, you'll find in our next lessons.
 For the sake of ease, you can follow the configurations as shown above.
 Then add the following extension to your project:
 
-image::img/resteasy-classic-jsonb.png[align=center]
+image::resteasy-classic-jsonb.png[align=center]
 
 RestEasy with JSON-B are that are the first libraries that we are going to use, in order to look through our first Java EE specification - JAX-RS.
 
 Once you have checked this extension, go and click the `Generate your application button`.
 A modal window will give you the different ways you can obtain your project.
 
-image::img/save-project.jpg[align=center]
+image::save-project.jpg[align=center]
 
 Following the instructions, there will be three options:
 
@@ -121,7 +125,7 @@ Read https://quarkus.io/guides/cli-tooling[this article] to learn more.
 Now that you have the project created, let's see it running.
 To run your code, simply execute `mvn quarkus:dev`.
 
-image::img/quarkus-dev-start.jpg[align=center]
+image::quarkus-dev-start.png[align=center]
 
 Once you see this in the command line, you can be assured your application is up and running.
 
@@ -177,7 +181,7 @@ Press `r` inside the window where your project is running.
 
 If you followed the previous section, the test should fail.
 
-image::img/test-in-runtime-error.jpg[align=center]
+image::test-in-runtime-error.jpg[align=center]
 
 Now let's fix that and let the test pass.
 Go to `src\test\java\com\vidasoft\GreetingResourceTest.java` and change the expected message to the new response you have set.
@@ -196,7 +200,7 @@ Go to `src\test\java\com\vidasoft\GreetingResourceTest.java` and change the expe
 
 Press `r` in the application's window again, and observe the results.
 
-image::img/test-in-runtime-success.jpg[align=center]
+image::test-in-runtime-success.jpg[align=center]
 
 == Project structure with Quarkus and Maven
 
@@ -214,7 +218,7 @@ IntelliJ should quickly recognize your project and framework and create a runner
 If no runner has been created, you can easily add it yourself.
 
 .Click on `Add Configuration` -> `+` -> `Quarkus` -> `OK`
-image:img/add-runner.png[align=center]
+image:add-runner.png[align=center]
 
 Other than that, no other configurations are needed.
 
@@ -227,7 +231,7 @@ To test that your application is running fine, let's make that curl call once mo
 
 Having our project configured, now it is time to look at our file tree.
 
-image::img/file-tree.jpg[align=center]
+image::file-tree.jpg[align=center]
 
 Most of the project's structure is common to a lot of Java Enterprise projects, but we are going run through it anyways, to make sure, we are on the same page.
 

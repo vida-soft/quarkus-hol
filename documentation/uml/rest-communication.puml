@@ -1,0 +1,17 @@
+@startuml
+!theme sketchy-outline
+skinparam maxMessageSize 200
+skinparam backgroundColor #White
+
+
+actor Subscriber as Sub #Blue
+participant MagMan as MM #Yellow
+participant SpendPal as SP #Green
+
+Sub -> MM: POST ""subscription/{userId}""
+MM -> SP: POST ""/payment""
+SP -> SP: Conducts payment processing
+SP -> MM: ""200 OK""
+MM -> Sub: ""204 NO_CONTENT""
+
+@enduml

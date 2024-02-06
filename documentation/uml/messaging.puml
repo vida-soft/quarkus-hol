@@ -1,0 +1,15 @@
+@startuml
+!theme sketchy-outline
+skinparam maxMessageSize 100
+
+[Payments] as P #White
+[Checkout] as C #White
+[Mailing] as M #White
+cloud Messaging as Mes #LightBlue {
+
+}
+
+P <..> Mes
+C <.right.> Mes
+M <.left.> Mes
+@enduml
