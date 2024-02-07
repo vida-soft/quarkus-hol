@@ -11,13 +11,11 @@ participant SpendPal as SP #Green
 
 Sub -> MM: POST ""subscription/{userId}""
 MM --> K: Sends message to ""payments"" topic
-MM -> MM: Activates the subscription for the user
 MM -> Sub: ""204 NO_CONTENT""
 K --> SP: Reads from ""payments"" topic
 SP -> SP: Conducts payment processing
 SP --> K: Sends payment result to ""post-payments"" topic
 K --> MM: Reads ""post-payments"" topic
-MM -> MM: Acts upon the message contents
-
+MM -> MM: Activates the subscription for the user
 
 @enduml

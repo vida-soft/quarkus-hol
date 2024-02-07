@@ -3,32 +3,36 @@
 
 == Reactive messaging with Kafka
 
-At this moment we have learned how two applications can communicate with each-other using the RESTful interfaces offered by RestEasy.
+At this moment we have learned how two applications can communicate with each-other using the REST interfaces offered by RestEasy.
 The HTTP REST protocol works perfectly when the client wants to pass a request and is waiting for a response immediately after the request was sent.
 In a small and controlled environment like our project structure here, this will happen lightning fast. 
 You send a request and you get a response under a second.
 
-In a real environments though, we don't usually tend to get things done so quick.
+In a real environments though, we don't usually tend to get things done so quickly.
 To make the user experience more seamless, we pretend that things have happened, before they do.
 
 .A.N.(AmazoN) example
 ***************************
 Imagine you are browsing through a shopping catalog in Amazon and you see something that you want to buy.
-Sometimes Amazon will give you the option to purchase the item you're looking at with a single click (no payment and shipping confirmation required), other times it will ask you to provide payment data, address and etc.
-Now what happens when you press the confirmation button to finalize your purchase?
-Some 2-3 second later and you a confirmation that the order has been completed.
+Sometimes Amazon will give you the option to purchase the item you're looking at with a single click, without having to verify your payment and shipping information.
+Other times it will ask you explicitly provide this data or at least confirm it.
+You click the check-out button, wait just 2-3 seconds, and BOOM! Order is completed.
 
-> But has it really completed? 🤔
+> But has it really been completed? 🤔
 
 The answer is no.
-In order to not keep the user waiting, Amazon will show that the purchase has been done successfully and the customer is free to move on.
-But underneath Amazon is processing thousands of purchases simultaneously.
-Depending on RESTful services in such a scenario is inefficient.
-Imagine having to wait on the huge line just to buy a ticket to watch a movie, and the movie is already running.
-Nobody would visit that cinema again.
+To keep the user from waiting, Amazon will do some tricks under the hood.
+First it will show that the purchase has been completed, but it is not really completed it is just registered as pending.
+Then all the associated servers start doing their thing to check if the item is still available, if your shipping data is correct and contact your bank to withdraw the money from your account.
+And Amazon is doing this process fpr thousands of purchases simultaneously.
 
-To prevent this from happening Amazon is using messaging services.
-Let's see how the messaging services mitigate the process of purchasing an item:
+Depending on REST services in such a scenario is inefficient, as it requires for every customer to wait until their query has been processed by every system that is connected to your purchase.
+Imagine having to wait on the huge line just to buy a ticket to watch a movie, and the movie has already started.
+This would be very bad user experience.
+Nobody would visit that cinema again right?
+
+To prevent such a scenario from happening Amazon is using some type of messaging services.
+Let's see how the messaging services could mitigate the process of purchasing an item:
 
 . The customer checks out their purchase and completes the order.
 . A REST call containing information about the order has been received inside an Amazon server.
@@ -39,9 +43,10 @@ Let's see how the messaging services mitigate the process of purchasing an item:
 .. A third system will take the customer's payment details and conduct a payment transaction with the payment provider of choice
 .. Finally when all the processes are completed another system will send the user an email about the completion state of the order.
 
-In this scenario if the payment and shipment information was processed correctly, the user will receive an email that the order is completed and the items are being processed. If something fails, the customer will be notified through email or through the app/website to re-submit their details.
-In the end this is creating a seamless flow, where the user experience seems smooth, the user can continue shopping or doing other stuff, while the order is being processed.
-For the most scenarios there shouldn't be a problem with the payment and the order for recurring customers, so they for example can benefit from purchasing items without having to wait for the process to complete.
+In this scenario if the payment and shipment information has been processed correctly, the user will receive an email, stating that the order is completed and the items are being processed.
+If something fails, the customer will be notified through email or through the app/website to re-submit their details.
+In the end this is creating a seamless flow, where the customer's experience, that seems smooth, they can continue shopping or do other stuff, while the order is being processed.
+In most scenarios there even shouldn't be a problem with the payment and the order for recurring customers, so they for example can benefit from purchasing items without having to wait for the system to process everything.
 ***************************
 
 === So what are messaging services?
@@ -54,36 +59,40 @@ Let's use our aforementioned example and imagine it has three services:
 * A "payments" service that will contact payment providers and charge the customer
 * A "mailing" service that will collect various results from the services above and send emails to the customer
 
-In a big platform like Amazon such a decentralization of services is needed in order to alleviate the high load of requests happening every second.
-For most part all of the services will communicate using some kind of a messaging system.
-Usually messaging systems like human ones have channels, threads or topics that substitute the groups and participants, that resemble the services themselves.
-In our example the participants are our services and they write and read messages from various topics, doing various actions upon reading a message from the topic.
+In a big platform like Amazon such a decentralization of services is inevitable, if they want to alleviate the high load of requests happening every second and better maintain the services' functionality.
+In most scenarios all the services will communicate using some kind of messaging system.
+Usually messaging systems like human-made ones have so-called channels, threads or topics, resembling groups, and participants, resembling the services themselves.
+In our example the participants are our services, and they can write and read messages from various channels or various actions upon reading a message.
 
 .This image displays a very simplified version of how applications can communicate through a messaging service.
 image::messaging.png[align=center]
 
-In a nutshell when an order is confirmed by the Checkout service, it will send a message to the Messaging service in a "group" called orders.
-In that same group Mailing and Payments are also participants.
+In a nutshell when an order is confirmed by the Checkout service, it will send a message to the Messaging service in a "group" called "orders".
+In that same group "Mailing" and "Payments" are also participants.
 They will receive the message and act accordingly.
 The payments service will call the payment provider using the customer's payment details and the Mailing service will assemble an email, confirming the customer's order and send it through an SMTP protocol.
 
 Once the payment has been processed, if something fails, there might be another group chat (topic), called "Payment Failures" where Payments and Mailing participate.
-If Payments writes to this topic, all other participants, such as Mailing, will read from it, and in the case of Mailing, it will assemble a an email stating what is wrong with the payments.
+
+TIP: To keep it simple, such a scenario is not found in the diagrams.
+The term for this is known as https://en.wikipedia.org/wiki/Dead_letter_queue[Dead Letter Queue].
+
+If "Payments" writes to this topic, all other participants, such as Mailing, will read from it, and in the case of Mailing, it will assemble a an email stating what is wrong with the payments.
 
 In all the stated scenarios, just like in real life, the service is not obligated to wait for the response of the other services.
 They just write the message to the topic and move on to the next action.
-The Checkout service does not need to know if the user's payment has went through.
+The Checkout service does not need to know if the user's payment has gone through.
 The customer needs to know.
-Therefore it is more convenient to notify them through email, instead of waiting for their details to be processed in a queue of dozen other order queries.
+Therefore, it is more convenient to notify them through email, instead of waiting for their details to be processed in a queue with dozen other order queries.
 
-=== Messaging sounds good, but who's the messenger?
+=== We can't send a message without a messenger
 
 There are a lot of protocols and implementations of messaging services around the internet.
-All of them might work differently, but at the end the goal is one and the same - an application writes to a central topic, where other applications can read from and vice-versa.
+All of them might work differently, but in their core, they serve the same purpose - an application writes to a topic, where other applications can read from and act upon receiving the message.
 
-As mentioned, messages can be transmitted and received through various protocols, most popular of which are TCP, AMQP and MQTT.
-Depending on the type and uses the applications have, we might want to implement different types of protocols for different scenarios.
-TCP and AMQP messaging services for example are more advanced than MQTT, whereas MQTT is lightweight and allows for better communication between IoT devices.
+As mentioned, messages can be transmitted and received through various protocols and services, most of which are using TCP, AMQP and MQTT.
+Depending on the type and uses for the applications, we might want to implement different types of protocols for different scenarios.
+TCP and AMQP messaging services for example are more advanced than MQTT, whereas MQTT is lightweight and allows for quick communication between IoT devices, which are small servers on their own.
 
 For the purpose of our course we are going to look through one of the most popular messaging service implementations, called Apache Kafka.
 Kafka is using the TCP protocol to allow communication between its components and participants. In the following section you'll be able to learn more about Kafka in a summary.
@@ -133,7 +142,7 @@ To be able to work with Kafka, we nee to learn the names and purpose of each par
 In summary, Apache Kafka simplifies real-time data streaming by providing a robust infrastructure for handling large-scale, distributed data flows among different components and systems.
 ***************************
 
-Now understanding Kafka, let's see how our Amazon application participants would use it in a real-life scenario
+After understanding what Kafka is, let's see how our Amazon application participants would use it in a real-life scenario
 
 image::kafka.png[align=center]
 
@@ -166,26 +175,11 @@ Now regardless if the diagram looks a bit more intimidating, if we follow along 
 
 . The user makes a payment providing their payment details
 . MagMan sends a message to a Kafka topic to notify all its listeners that a payment has occurred
-. Then the service acts immediately to activate the user's subscription, without waiting for confirmation
 . The user gets the confirmation from MagMan and can move onto using the site
 . The rest of the process is managed in the background without the subscriber's knowledge,
 i.e. the payment gets processed and the SpendPal service returns a response message in a separate dedicated topic, which is read by MagMan
 . If the result of the payment was successful, we can allow the user to continue using the site, without any interventions, if not,
 we might trigger a mechanism to stop the user from using the website and ask them to provide payment information again.
-
-[NOTE]
-====
-The scenario played here is just hypothetical.
-For most services it might be crucial for the payment to be successful in order to use them, but in our scenario, we consider
-that the probability of the payment to fail and the time the user will use our service will be too short to create any financial loss into using our service,
-therefore we can allow the user to use our platform without interruptions, while we process the payment.
-
-You can see the same scenario in airplanes for example.
-Since no radio waves are allowed on the plane, all payments are processed offline and once the plane is on ground, all the payments are requested from
-the customers' bank accounts.
-In the meanwhile customers will get their goodies, regardless if the payment was successful or not.
-Resolving unclaimed payments is up to the policy of the flight company.
-====
 
 With messaging systems we want to implement one way communication as each message payload is unique to the dedicated topic.
 We also do not want to double read a topic when we publish something in it.
