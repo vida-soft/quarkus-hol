@@ -201,3 +201,478 @@ has completed processing.
 Once the message was read, the Kafka broker will remember which messages were read and will provide the subscriber applications only with the unread messages.
 
 === Setting up Kafka for our services
+
+Before we mess up with our project we will first need to set up our Kafka infrastructure.
+As mentioned in the previous chapters Kafka consists of many server components that need to be hosted somewhere in order for
+our applications to be able to connect, write and read messages.
+
+Setting up Kafka manually is a bit complicated and requires some configurations, network adjustments and so on.
+Thankfully there is the thing called https://www.docker.com/products/docker-desktop/[Docker].
+And this is the perfect time to learn what it is and how to install it on your machine.
+If you follow the link above, the process should be quite straight-forward.
+
+TIP: Although we are going to use Docker for simplicity, there's nothing stopping you from going wild and trying to configure a Kafka broker yourself.
+Fell free to go through these steps in a way that is comfortable to you.
+
+WARNING: Installing Docker on some operating systems like Ubuntu, might force you to install a version from their official app store, known as Snapcraft.
+Installing Docker form there might not always give the desired results, when it comes to user permissions and access for the application to system resources.
+You might also not be gating the latest version of Docker, as these apps seem to not be maintained officially by the vendor.
+If you experience such issues, please make sure to delete all Snapcraft installations of Docker and install the official version from the Docker website.
+
+Now that we have an idea how to set up the Kafka environment, the following steps will concentrate on using Docker for the set-up.
+The easiest way to get our Kafka docker container up and running is by creating a `docker-compose` script.
+If you have installed Docker properly, you should be able to invoke `docker-compose` from your terminal.
+
+The next step is to create a docker-compose file.
+To do so, simply create a file, called `docker-compose.yml` into your project folder and place the following content inside:
+
+[source, yaml]
+----
+version: '3'
+services:
+
+  zookeeper: <.>
+    image: confluentinc/cp-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+
+  kafka: <.>
+    image: confluentinc/cp-kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - '9092:9092'
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+
+  create-topics: <.>
+    image: confluentinc/cp-kafka
+    depends_on:
+      - kafka
+    entrypoint: [ '/bin/sh', '-c' ]
+    command: |
+      "
+      # blocks until kafka is reachable
+      kafka-topics --bootstrap-server kafka:29092 --list
+
+      echo -e 'Creating kafka topics'
+      kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic payments --replication-factor 1 --partitions 1
+      kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic post-payments --replication-factor 1 --partitions 1
+
+      echo -e 'Successfully created the following topics:'
+      kafka-topics --bootstrap-server kafka:29092 --list
+      "
+----
+<.> First we need a Zookeeper where our Kafka instance will live in
+<.> Next is the Kafka server (the Broker), which needs to know where the Zookeeper is, in order for it to work
+<.> Finally this is a single time run script, that will create the topics where our publishers and subscribers will read and write to.
+
+And now it's time to run a docker-compose script.
+
+. Open a terminal window inside the project folder or where you left the `docker-compose.yml` file.
+. Write the command `docker-compose up` and press enter
+. Some logs will appear.
+When the logs stop you should be able to see the following result within:
++
+image::docker-compose-success.png[align=center]
+. Now let's check that everything is fine and the containers are running.
+There are two ways to check that
+.. Open another terminal window and write the command `docker container ls`.
+You should be seeing exactly two running containers
++
+image::docker-container-ls.png[align=center]
+.. If you have installed Docker Desktop, you should see the two running containers in the containers tab as well
++
+image::docker-containers-docker-desktop.png[align=center]
++
+NOTE: Don't worry that the `create-topics` container is down.
+Its purpose was to create the required topics and shut down.
+All we need to do now is implement the Producer and Subscriber logic in out applications.
+
+Having our Kafka server set up, it is time to configure our applications to support Kafka.
+
+. Go to the `pom.xml` file of each application and add a new Quarkus extension:
++
+[source,xml]
+----
+<dependency>
+      <groupId>io.quarkus</groupId>
+      <artifactId>quarkus-smallrye-reactive-messaging-kafka</artifactId>
+</dependency>
+----
+. Go to each app's `application.properties` file and add the respective properties to enable the app to read and write messages:
+.. For MagMan
++
+[source,properties]
+----
+kafka.bootstrap.servers=localhost:9092
+
+mp.messaging.outgoing.payments.connector=smallrye-kafka
+mp.messaging.outgoing.payments.topic=payments
+
+mp.messaging.incoming.post-payments.connector=smallrye-kafka
+mp.messaging.incoming.post-payments.topic=post-payments
+mp.messaging.incoming.post-payments.group.id=${quarkus.uuid}
+----
+.. For SpendPal
++
+[source,properties]
+----
+kafka.bootstrap.servers=localhost:9092
+
+mp.messaging.incoming.payments.connector=smallrye-kafka
+mp.messaging.incoming.payments.topic=payments
+mp.messaging.incoming.payments.group.id=${quarkus.uuid}
+
+mp.messaging.outgoing.post-payments.connector=smallrye-kafka
+mp.messaging.outgoing.post-payments.topic=post-payments
+----
++
+TIP: Notice that the configurations look the same, but the state of `incoming`/`outgoing` is inverted.
+This is reflecting our will to make MagMan only write to the `payments` topic and read from `post-payments` topic.
+The same goes for SpendPal inverse.
+
+. The final thing we need to do in order to have things up and running is to define a class that will handle messages.
+.. Create a new package and class in each respective project, called `kafka.KafkaMessageService` or something that feels closer to your heart.
+The point here is to have a dedicated class for this to keep our code structure clear
+. For MagMan in this class now you can define the following methods:
++
+[source, java]
+----
+@ApplicationScoped
+public class KafkaMessageService {
+
+    @Inject
+    @Channel("payments")
+    Emitter<String> paymentsEmitter;
+
+    @Incoming("post-payments")
+    public void consumePostPaymentMessage(String message) {
+
+    }
+
+    public void sendPaymentsMessage(PaymentPayload payload) {
+
+    }
+
+}
+
+//Where Payments payload can be a record or POJO in a separate class object
+
+public record PaymentPayload(String username, CreditCardDTO creditCardDTO) {
+}
+----
+. Do the same shenanigan in SpendPal, but inversed.
+. Now when you try to run the projects you should be able to see the following logs:
++
+.The log messages here signify that our applications are talking to the configured topics and are ready to consume and produce messages.
+image::kafka-connected-success.png[align=center]
+
+=== Implementing the messaging service in our project
+
+Now that we have set up communication between our two applications through Kafka, we need to refactor the code so that they can actively use channels of communication we established.
+
+For now, we won't get rid of the REST communication between the two.
+We would want a fallback mechanism in case the communication with Kafka seizes to work.
+Let's first implement our producer and consumer logic in each respective project...
+
+In MagMan we agreed that we want to publish messages through the `payments` channel and consume messages from SpendPal.
+To do so, we will need to convert the `PaymentsPayload` record into a JSON string, which is going to be transmitted as our message to Kafka and then we want to use our injected `paymentsEmitter` object to send the message.
+
+[source, java]
+----
+public void sendPaymentsMessage(PaymentPayload payload) {
+    String payloadString = JsonbBuilder.create().toJson(payload); <.>
+    paymentsEmitter.send(payloadString).toCompletableFuture().join(); <.>
+    LOGGER.info("Successfully emitted message to payments topic: %s".formatted(payloadString)); <.>
+}
+----
+<.> We use Jsonb's serialization capabilities to convert our Java object into the expected output format which is of type `String`.
+<.> For now we need to make the emitter synchronous as it may cause the `@Transactional` scope of invoking methods to leak in the asynchronous thread, which will throw an exception for https://github.com/quarkusio/quarkus/issues/18450[establishing connection without transaction].
+<.> We're placing this log, as this operation will happen behind the scenes and we want to confirm that what we sent is what we expected.
+**Please do not log credit card information in your real-world applications!**
+
+The next step will be to implement the consumer logic within SpendPal.
+
+[source,java]
+----
+@Incoming("payments")
+public void consumePostPaymentMessage(String message) {
+    PaymentPayload payload = JsonbBuilder.create().fromJson(message, PaymentPayload.class);
+    LOGGER.info("Received message with payload: %s".formatted(message));
+}
+----
+
+To keep things simple, we're not going to do anything with the payload. We're just going to track the logs and see that messages are sent and received correctly.
+
+Now that we have built the handling of the `payments` topic, we can sneak in the message sending method into our Payment service.
+
+[source,java]
+----
+@ApplicationScoped
+public class PaymentService {
+
+    ...
+
+    @Inject
+    KafkaMessageService kafkaMessageService;
+
+    boolean chargeSubscriber(Subscriber subscriber) throws SpendPalException {
+        if (subscriber.creditCard != null) {
+            CreditCardDTO creditCardDTO = new CreditCardDTO(subscriber.creditCard);
+            try {
+                kafkaMessageService.sendPaymentsMessage(new PaymentPayload(subscriber.userName, creditCardDTO)); <.>
+                return true;
+            } catch (Exception e) { <.>
+                LOGGER.severe(e.getMessage());
+                ConfirmationDTO paymentResult = spendPalClient.chargeCustomer(new CreditCardDTO(subscriber.creditCard));
+                LOGGER.log(Level.INFO, "Charging subscriber with id: {0}  and card type {1} of number: {2}",
+                        new Object[]{subscriber.id, subscriber.creditCard.creditCardType, subscriber.creditCard.number});
+
+                if (paymentResult.getSuccess()) {
+                    LOGGER.log(Level.INFO, "Successfully charged customer with id: {0}  and card type {1} of number: {2}",
+                            new Object[]{subscriber.id, subscriber.creditCard.creditCardType, subscriber.creditCard.number});
+                    onSubscriberCharged.fire(subscriber);
+                    return true;
+
+                } else {
+                    LOGGER.log(Level.WARNING, "Unable to charge customer with id: {0}  and card type {1} of number: {2}",
+                            new Object[]{subscriber.id, subscriber.creditCard.creditCardType, subscriber.creditCard.number});
+
+                    return false;
+                }
+            }
+        }
+
+        return false;
+    }
+
+}
+----
+<.> Since we are going to trust on both systems doing their thing in the background, we consider that the payment information has been sent once the message is emitted through Kafka.
+<.> As we mentioned, we are not going to get rid of the REST call SpendPal, we are just going to use it as a fallback mechanism.
+
+After you have refactored the code, it is time to test it.
+Make sure you have configured a user correctly and send a request to charge subscriber.
+
+[source,curl]
+----
+curl --location --request POST 'http://localhost:8080/subscription' \
+--header 'Authorization: Bearer bearing'
+----
+
+What you are expected to see as a result is log messages stating the successfulness of the message transmission in both services.
+
+[source,text]
+----
+In Magman
+2024-02-07 13:55:02,285 INFO  [com.vid.mag.mes.KafkaMessageService] (executor-thread-1) Successfully emitted message to payments topic: {"creditCardDTO":{"number":"123456778893233242","type":"VISA"},"username":"cave123"}
+
+And in SpendPal
+2024-02-07 13:55:02,285 INFO  [com.vid.mag.mes.KafkaMessageService] (executor-thread-1) Successfully emitted message to payments topic: {"creditCardDTO":{"number":"123456778893233242","type":"VISA"},"username":"cave123"}
+----
+
+Now that we know it works, we can do the opposite thing for the `post-payments` topic.
+
+In SpendPal
+
+[source, java]
+----
+@Incoming("payments")
+public void consumePostPaymentMessage(String message) {
+    PaymentPayload payload = JsonbBuilder.create().fromJson(message, PaymentPayload.class);
+    LOGGER.info("Received message with payload: %s".formatted(message));
+
+    PaymentConfirmation paymentConfirmation = new PaymentConfirmation(payload.username(), new ConfirmationDTO(true, LocalDateTime.now()));
+    sendPaymentsMessage(paymentConfirmation);
+}
+
+public void sendPaymentsMessage(PaymentConfirmation confirmation) {
+    String payload = JsonbBuilder.create().toJson(confirmation);
+    postPaymentsEmitter.send(payload);
+    LOGGER.info("Successfully sent payment confirmations with payload: %s".formatted(payload));
+}
+----
+
+And in MagMan
+
+[source, java]
+----
+@Incoming("post-payments")
+public void consumePostPaymentMessage(String message) {
+    PaymentConfirmation paymentConfirmation = JsonbBuilder.create().fromJson(message, PaymentConfirmation.class);
+    LOGGER.info("Received payment confirmation for username %s and status %s".formatted(paymentConfirmation.username(), paymentConfirmation.confirmationDTO().getSuccess()));
+}
+----
+
+Now every time you send a new request to charge customer, you will see two additional logs in MagMan.
+
+[source, text]
+----
+2024-02-07 14:38:45,689 INFO  [com.vid.mag.mes.KafkaMessageService] (executor-thread-1) Successfully emitted message to payments topic: {"creditCardDTO":{"number":"123456778893233242","type":"VISA"},"username":"cave123"}
+2024-02-07 14:38:47,887 INFO  [com.vid.mag.mes.KafkaMessageService] (vert.x-eventloop-thread-3) Received payment confirmation for username cave123 and status true
+
+----
+This signifies that the communication between the two services is working properly.
+
+=== Let's put our subscriptions into use shall we?
+
+Since our Kafka communication is working it is time to do something with those subscriptions, not just pass messages.
+Let's make it so that our system can keep track of the Subscriber's subscription status.
+
+. Create a new entity, called Subscription
++
+[source,java]
+----
+@Entity
+public class Subscription extends AbstractEntity {
+
+    @ManyToOne
+    public Subscriber subscriber;
+
+    //We need to support three types of statuses here: PENDING, VALID and FAILED
+    @Enumerated(EnumType.STRING)
+    public SubscriptionStatus status = SubscriptionStatus.PENDING;
+
+    public LocalDateTime initiated = LocalDateTime.now();
+
+    public LocalDateTime completed;
+
+    public Subscription() {
+
+    }
+
+    public Subscription(Subscriber subscriber) {
+        this.subscriber = subscriber;
+    }
+
+    public static Optional<Subscription> findLastPendingSubscription(Subscriber subscriber) {
+        return find("subscriber=?1 and status='PENDING'", Sort.descending("initiated"), subscriber)
+                .firstResultOptional();
+    }
+}
+----
+. Optimise the event handling upon new subscription
++
+[source,java]
+----
+public class SubscriptionExtensionHandler {
+    ...
+    @Transactional
+    @ActivateRequestContext
+    public void observeSubscriptionExtension(@Priority(Priorities.APPLICATION + 2000) @Observes @ChargedSubscriber SubscriberChargedPayload payload) { <.>
+        Subscriber subscriber = Subscriber.getEntityManager().merge(payload.subscriber()); //making sure that the subscriber entity is attached
+
+        Subscription subscription = Subscription.findLastPendingSubscription(payload.subscriber())
+                .orElse(new Subscription(payload.subscriber()));
+        if (payload.confirmation().getSuccess()) {
+            subscriber.subscribedUntil = subscriber.subscribedUntil.plusYears(1);
+            subscription.status = SubscriptionStatus.VALID;
+            LOGGER.log(Level.INFO, "Extended subscription for user {0}, till {1}",
+                    List.of(subscriber.id, subscriber.subscribedUntil.toString()).toArray());
+        } else {
+            subscription.status = SubscriptionStatus.FAILED;
+        }
+
+        subscription.completed = payload.confirmation().getTimestamp();
+    }
+
+    public void sendEmail(@Priority(Priorities.APPLICATION + 1000) @Observes @ChargedSubscriber SubscriberChargedPayload payload) {
+        LOGGER.log(Level.INFO, "Sent email to subscriber {0}, about their subscription renewal.", payload.subscriber().id);
+    }
+}
+----
+<.> Here we used to pass just the `Subscriber` as a payload, but now as we are processing more information, regarding the subscription, we will need a more detailed payload, requiring us to change the event payload itself.
+Here is an example of how that payload should look:
++
+[source,java]
+----
+public record SubscriberChargedPayload(Subscriber subscriber, ConfirmationDTO confirmation) { }
+----
+. Now let's go back to the Payment service and refactor some logic there
++
+[source,java]
+----
+@Transactional
+public boolean chargeSubscriber(Subscriber subscriber) throws SpendPalException {
+        subscriber = Subscriber.getEntityManager().merge(subscriber); //We make sure that the subscriber instance is attached to the entity manager.
+    failPreviousSubscriptionAttempt(subscriber); <.>
+
+    Subscription subscription = new Subscription(subscriber);
+    subscription.persist(); <.>
+
+    if (subscriber.creditCard != null) {
+        CreditCardDTO creditCardDTO = new CreditCardDTO(subscriber.creditCard);
+        try {
+            kafkaMessageService.sendPaymentsMessage(new PaymentPayload(subscriber.userName, creditCardDTO));
+            return true;
+        } catch (Exception e) {
+            LOGGER.severe(e.getMessage());
+            return chargeSubscriberThroughRest(subscriber); <.>
+        }
+    } else {
+        subscription.status = SubscriptionStatus.FAILED; <.>
+        subscription.completed = LocalDateTime.now();
+        return false;
+    }
+}
+
+private void failPreviousSubscriptionAttempt(Subscriber subscriber) {
+    Subscription.findLastPendingSubscription(subscriber)
+            .ifPresent(s -> {
+                s.status = SubscriptionStatus.FAILED;
+                s.completed = LocalDateTime.now();
+            });
+}
+----
+<.> This operation is performed just to make sure there are no subscriptions left in `PENDING`, because we are creating a new `PENDING` one.
+<.> As defined in the `Subscription` class, by default every new subscription gets the status `PENDING` so we do not need to set it explicitly here.
+<.> To make this method short and more readable, the logic behind our fallback mechanism has been moved to a dedicated method.
+<.> Since we have persisted the subscription, it is managed by the Entity Manager and every other change within the `@Transactional` scope will commit to the transaction, without needing to call `persist()` on the method again.
+
+. If you have not done this yet, feel free to extend the  `UserDTO` class to see more information upon user login.
+For example you can add `subscribedUntil` date to it, so wen the client gets a login response, they can immediately check if the user is subscribed or not.
+. The final step is to handle the `KafkaMessageService` class.
+Here we will need to inject the event for `@ChargedSubscriber` and invoke it, once we receive a message from Kafka.
++
+[source,java]
+----
+    @Inject
+    @ChargedSubscriber
+    Event<SubscriberChargedPayload> subscriberChargedEvent;
+
+    @Transactional
+    @Incoming("post-payments")
+    public void consumePostPaymentMessage(String message) {
+        PaymentConfirmation paymentConfirmation = JsonbBuilder.create().fromJson(message, PaymentConfirmation.class);
+        Subscriber subscriber = Subscriber.find("userName", paymentConfirmation.username()).firstResult();
+        LOGGER.info("Received payment confirmation for username %s and status %s".formatted(paymentConfirmation.username(), paymentConfirmation.confirmationDTO().getSuccess()));
+
+        if (subscriber == null) {
+            LOGGER.warning("No subscriber with the user name of '%s' was found.".formatted(paymentConfirmation.username()));
+        }
+
+        SubscriberChargedPayload eventPayload = new SubscriberChargedPayload(subscriber, paymentConfirmation.confirmationDTO());
+        subscriberChargedEvent.fire(eventPayload);
+    }
+
+    public void sendPaymentsMessage(PaymentPayload payload) {...}
+}
+----
+
+These steps now should be sufficient to demonstrate how our application can act upon sending and receiving Kafka messages.
+
+=== What next?
+
+Now that you know how to configure messaging services for your application, you can try and move further.
+Here are some things you might want to try:
+
+. Check the https://quarkus.io/guides/kafka[full documentation] of the SmallRye Kafka extension in Quarkus.
+. Try to set up some unit tests using the https://quarkus.io/guides/kafka#testing-a-kafka-application[in-memory reactive messaging Quarkus plugin].
+. Try to experiment with different types of scenarios where the communication with Kafka might fail and think of ways those issues could be resolved.
