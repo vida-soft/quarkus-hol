@@ -1,0 +1,322 @@
+:imagesdir: img
+
+== MicroProfile Reactive Messaging and Server-Sent Events (SSE)
+
+In the previous chapter we learned what messaging between applications is and how it can be used to allow applications to communicate between each-other asynchronously, on order to achieve seamless user experience, where the actions of the user will be handled by our services without having the user wait for a response.
+To do so, we provided the `quarkus-smallrye-reactive-messaging-kafka` extension to our applications, which, with a couple of configurations, allowed them to pass messages to each-other asynchronously and act upon the events happening within.
+
+In this chapter we are going to learn what the reactive part of our extension means and how we can use it for a real-life scenario. But first...
+
+.What is Reactive Programming?
+***************************
+Reactive programming is a programming paradigm that focuses on reacting to changes in data or events rather than explicitly defining step-by-step instructions. In simple terms, it's about setting up reactions to events, like data changes or user interactions, and letting the program automatically respond to those events.
+
+In other the reactive programming is looking from a different aspect of treating data.
+It provides functional APIs that allow to directly act upon the events, regarding the stream of data, instead of having to pre-define those instructions in an imperative manner.
+
+Real-life scenarios where reactive programming is commonly used include:
+
+- *User interfaces:* Reacting to user inputs such as clicks, typing, or mouse movements.
+- *Web applications:* Managing asynchronous data streams like HTTP requests, WebSocket connections, or data from databases.
+- *IoT (Internet of Things):* Handling real-time data from sensors or devices.
+- *Gaming:* Reacting to user actions and events in real-time.
+
+TIP: All of these applications of reactive programming can be performed using imperative approaches, but in some user scenarios the implementation would be way more simple and minimal if we are using reactive APIs.
+
+> So what are the differences between imperative and reactive programming?
+
+In *imperative programming*, you explicitly define the steps and order of execution to achieve a desired outcome.
+It's like following a recipe, where you tell the computer exactly what to do and when to do it.
+In *reactive programming*, however, you define how your program should react to changes or events.
+It's more like setting up triggers and letting the program handle the responses automatically.
+Here is a comparison between the two to get better understanding of each one's advantage and disadvantages.
+
+.A comparison between reactive and imperative programming.
+[cols="h,1,1"]
+|===
+|Type of programming |Advantages |Disadvantages
+
+|Reactive
+a|
+- *Responsive:* Reacts to changes or events in real-time, providing a more interactive user experience.
+- *Concise:* Often results in cleaner and more concise code, especially when dealing with asynchronous operations.
+- *Scalable:* Well-suited for handling streams of data or events, making it scalable for applications with high loads.
+a|
+- *Learning Curve:* It can be more challenging for developers accustomed to imperative programming paradigms.
+- *Complexity:* Reactive systems can become complex to understand and debug, especially when dealing with complex event flows.
+- *Performance Overhead:* Reactive programming might introduce some performance overhead due to the additional layers of abstraction.
+
+|Imperative
+a|
+- *Straightforward Control Flow:* Imperative programming follows a step-by-step approach, making it easier to understand and reason about the flow of the program.
+- *Efficient for Small-Scale Problems:* For small, linear problems, imperative programming can be efficient and easy to implement.
+- *Close to Machine Language:* Imperative programming languages often map closely to the underlying hardware, making them efficient for low-level programming tasks.
+- *Mutability:* Imperative programming allows for mutable state, which can be useful for certain tasks where state needs to change frequently.
+- *Wide Adoption:* Imperative programming paradigms and languages like C, Java, and Python are widely adopted, with vast libraries and resources available for developers.
+a|
+- *Complexity:* As programs grow in size and complexity, managing mutable state and controlling flow with imperative constructs can become challenging and error-prone.
+- *Concurrency Issues:* Managing concurrency and parallelism in imperative programs can be difficult due to shared mutable state, leading to issues like race conditions and deadlocks.
+- *Debugging Challenges:* Imperative programs tend to be more prone to bugs and may also be hard to debug, especially when dealing with complex control flow and mutable state.
+- *Less Declarative:* Imperative programming focuses on how to achieve a result rather than what the desired result is, which can make code less readable and maintainable, especially for large-scale projects.
+- *Limited Compositionality:* Imperative code tends to be less composable than functional or reactive code, making it harder to reuse and refactor components.
+|===
+
+In conclusion, we are better off using reactive programing over imperative in the following scenarios:
+
+- *Asynchronous Operations:* Reactive programming shines when dealing with asynchronous operations and event-driven architectures.
+- *Real-time Applications:* For applications requiring real-time responsiveness, such as games or interactive dashboards.
+- *Complex Event Flows:* When dealing with complex event flows or data streams, reactive programming can provide better organization and handling.
+
+Ultimately, the choice between reactive and imperative programming depends on factors like the nature of the application, team expertise, and performance considerations.
+It's essential to weigh the pros and cons of each paradigm based on your specific use case.
+***************************
+
+NOTE: Reactive programming, as a concept is vast and has a lot of concepts that you might need to understand, before proceeding with this chapter.
+The chapter intents to show you how you can use this paradigm within Quarkus.
+If you need to get better understanding of how and why things work, please refer to the resources at the end of the chapter or look for more information in the documentations of the APIs we are going to use.
+
+
+As you may have noticed our application does not immediately require the use of reactive programming, as it is small in scale, doesn't have a lot of asynchronous operations, does not need to react to a constant real-time event flows.
+In spite of that, this does not stop us to use whatever is available by the APIs provided or whatever suits the project best.
+
+For example we're kind of forced to implement some reactive programming with the SmallRye Kafka plugin, as it uses reactive APIs.
+Knowing this, we may be able to use the event stream and send those events to the client, to create a front-end notification system for example.
+
+Imagine a scenario where the user purchases a subscription, and a couple of minutes later gets a notification on their profile, that the purchase was completed successfully, or has failed, and they need to take action.
+This is what we are going to aim at in this chapter.
+
+=== Server-Sent Events
+
+Server-Sent Events or SSE for short are streams of events that are constantly sent from the server to the client.
+They use to replace the former WebSocket technology with a simpler and more flexible solution to notifying a web/application based interface of occurring events regarding a process, engaged with the user's session.
+As we mentioned earlier we want the customer to receive events upon changes happening regarding the status of the payment. Let's see how this would look in our updated sequence diagram:
+
+image::sse-notifications.png[align=center]
+
+Once the customer is logged in, they will subscribe to an SSE channel, that opens an endless stream to provide the client application with data on demand.
+Once the communication is established, the web application will start publishing events to the stream as they occur.
+
+=== Adopting reactive
+
+The `quarkus-smallrye-reactive-messaging-kafka` extension on its own does not allow us to invoke the reactive APIs for other purposes outside the boundaries of the Kafka implementation, although we can https://quarkus.io/guides/kafka#streaming-kafka-topics-as-server-sent-events[directly stream the received messages through a Server-Sent Event], we want to be smart about it, and maybe have a bit more control.
+
+But first we need to import and alter some maven dependencies to allow our application to use reactive code.
+
+. Replace `quarkus-resteasy` and quarkus-resteasy-jsonb with the following dependencies:
++
+[source, xml]
+----
+<dependency>
+  <groupId>io.quarkus</groupId>
+  <artifactId>quarkus-resteasy-reactive-jsonb</artifactId>
+</dependency>
+<dependency>
+  <groupId>io.quarkus</groupId>
+  <artifactId>quarkus-resteasy-reactive</artifactId>
+</dependency>
+----
++
+TIP: Depending on your needs, you might need to use even more reactive APIs requiring you to call reactive Panache or reactive Hibernate for example.
+This chapter only affects the RestEasy APIs.
++
+CAUTION: Failing to replace those dependencies or leaving both reactive and non-reactive maven dependencies inside the project will cause a run-time conflict and the project won't start.
+Make sure that you have only the reactive libraries imported to your project.
+. Add the following dependencies to your project:
++
+[source, xml]
+----
+<dependency>
+  <groupId>io.quarkus</groupId>
+  <artifactId>quarkus-vertx</artifactId> <.>
+</dependency>
+<dependency>
+  <groupId>io.smallrye.reactive</groupId>
+  <artifactId>smallrye-mutiny-vertx-web-client</artifactId> <.>
+</dependency>
+----
+<.> https://vertx.io/docs/vertx-core/java/[Eclipse Vert.x] is a reactive library that will allow you to pass through system-wide events and act upon their arrival to the subscribed listeners.
+Unlike the Jakarta CDI events, Vert.x events function differently, as they can be handled from anywhere inside the code and work asynchronously.
+<.> https://smallrye.io/smallrye-mutiny/latest/[Mutiny] is yet another reactive API that serves as the back-bone of RestEasy reactive implementations.
+We want to use Vert.x's EventBus capabilities alongside the APIs of Mutiny, so we need this library that is going to merge both APIs together.
+
+NOTE: Adding and replacing just those dependencies will not require you to change anything inside the code.
+Everything should work as expected.
+
+Once we have this configured it is time to work with the code.
+
+=== Implementing Server-Sent event logic using Mutiny and Vert.x
+
+Implementing Server-Sent Events logic is quite straight-forward.
+The most important thing here is to be able to consume those type of events with your web client, if you want to be sure that what you're doing is working.
+The easiest way to consume server-sent events is by using a software that supports this type of REST response.
+A good recommendation for that will be Postman.
+
+WARNING: If you are going to listen for SSEs using postman, please make sure that you are using the latest version from the official website.
+Some app stores tend to publish older versions, which might not support SSE and you won't be able to receive those events.
+
+To start off, we are going to need an endpoint that our customers will call every time they log into their account to start listening for events.
+In MagMan, create a new package and a class, called `sse.SseResouce`:
+
+[source, java]
+----
+@RequestScoped
+@Authenticated
+@Path("sse")
+public class SseResource {
+
+    @POST
+    @Produces(MediaType.SERVER_SENT_EVENTS)
+    @SseElementType(MediaType.TEXT_PLAIN)
+    public Multi<String> stream() {
+        return Multi.createFrom().item(() -> "Hello Mutiny!");
+    }
+}
+----
+
+Now let's make sure that our imports and implementation is working properly.
+To do so, we are going to first implement a `"Hello Mutiny"` response here, that we are to expect when we test the endpoint.
+
+[source, java]
+----
+public Multi<String> stream() {
+    return Multi.createFrom().item(() -> "Hello Mutiny!");
+}
+----
+
+Time to test our endpoint.
+Use your SSE supported client and call the endpoint.
+
+TIP: Don't forget to provide Authorization header.
+
+If you are using Postman, you should be able to see a screen like this:
+
+image::hello-mutiny.png[align=center]
+
+If your result is the same, we can proceed with integrating Vert.x's EventBus:
+
+[source, java]
+----
+@Inject
+EventBus bus; <.>
+
+String userId; <.>
+
+public SseResource(JsonWebToken jwt) {
+    userId = jwt.getClaim("upn");
+}
+
+@POST
+@Produces(MediaType.SERVER_SENT_EVENTS)
+@SseElementType(MediaType.TEXT_PLAIN)
+public Multi<String> stream() {
+    return bus.<String>consumer(userId) <.>
+            .bodyStream().toMulti();
+}
+----
+<.> Make sure you are importing `io.vertx.mutiny.core.eventbus.EventBus` or the methods `bodyStream().toMulti()` will not be available.
+<.> With the current state of the dependencies we have, we may not be able to use the non-reactive version of EntityManager within the scope of a reactive resource, so to make things easy we are going to use the user's id as the event identifier.
++
+TIP: If you still want to inject the user here, you'll have to explicitly tell the resource to write in the working thread.
+This can be done by adding the `@Blocking` annotation on class level.
+If you want to work with the database on a non-blocking thread however, you will have to go through migrating hibernate and panache to their reactive counterparts, which will require to restructure the whole project.
+<.> We pass the userId to the `consummer()` method to denote what the name/address of the event is going to be.
+
+Now every time somebody uses the event bus to send event to that address (the user's id), this consumer will pass the message down to the SSE stream.
+
+The next step is to implement triggers, where the event will occur.
+As stated in our diagram, we want to get notification whenever something has happened with our transaction.
+The most convenient place to snag in such type of events would be inside the `KafkaMessagingService`.
+So let's go and make some changes to our produces and consumers.
+
+. Let's define a format in which notifications will be received by the customer.
+Inside the `sse` package, create a record for SSE payload.
++
+[source, java]
+----
+public record SsePayload(Type type, String message) {
+
+    @Override
+    public String toString() {
+        return JsonbBuilder.create().toJson(this);
+    }
+
+    enum Type {
+        PAYMENTS, POST_PAYMENTS
+    }
+}
+----
+. Go to KafkaMessagingService and alter the consumer and producer to uae the EventBus:
++
+[source, java]
+----
+@ApplicationScoped
+public class KafkaMessageService {
+
+    //Loggers, Emitters, CDI events
+
+    @Inject
+    EventBus eventBus;
+
+    @Transactional
+    @Incoming("post-payments")
+    public void consumePostPaymentMessage(String message) {
+        PaymentConfirmation paymentConfirmation = JsonbBuilder.create().fromJson(message, PaymentConfirmation.class);
+        Subscriber subscriber = Subscriber.find("userName", paymentConfirmation.username()).firstResult();
+        LOGGER.info("Received payment confirmation for username %s and status %s".formatted(paymentConfirmation.username(), paymentConfirmation.confirmationDTO().getSuccess()));
+
+        if (subscriber == null) {
+            LOGGER.warning("No subscriber with the user name of '%s' was found.".formatted(paymentConfirmation.username()));
+        }
+
+        SubscriberChargedPayload eventPayload = new SubscriberChargedPayload(subscriber, paymentConfirmation.confirmationDTO());
+        eventBus.send(subscriber.id + "", new SsePayload(SsePayload.Type.POST_PAYMENTS, message).toString()); <.>
+        subscriberChargedEvent.fire(eventPayload);
+    }
+
+ public void sendPaymentsMessage(Long userId, PaymentPayload payload) {
+        String payloadString = JsonbBuilder.create().toJson(payload);
+        paymentsEmitter.send(payloadString)
+                .thenRun(() ->
+                        eventBus.send(userId.toString(), new SsePayload(SsePayload.Type.PAYMENTS, "Payment information sent!").toString())) <.>
+                .exceptionally(throwable -> {
+                    LOGGER.severe("Unable to send message through Kafka: %s".formatted(throwable.getMessage()));
+                    eventBus.send(userId.toString(), new SsePayload(SsePayload.Type.PAYMENTS, "Error sending Payment request").toString()); <.>
+                    return null;
+                });
+        LOGGER.info("Successfully emitted message to payments topic: %s".formatted(payloadString));
+    }
+}
+----
+<.> Here we can simply pass the result of the event to the event bus, and reflect it down to the customer
+<.> Here we wait asynchronously for the message to finish being processed and send an event through the EventBus.
+<.> In case of an error in the asynchronous process, we added a reaction how to handle the error.
+
+If you've followed through, everything should be ready for testing.
+Fire up Docker, Kafka, SpendPal, and MagMan, to start testing the implementations in the following order.
+
+. Create your user or use an exiting one
+. Log in to the account
+. Subscribe to the SSE event from the endpoint we created in this chapter.
+. Register a credit card for the user.
+. Invoke the charge customer operation a couple of times.
+
+If everything works properly, you should expect a couple of messages in the SSE event stream.
+
+image::sse-notifications-payments.png[align=center]
+
+The stream will remain open wile the server is running and the client is connected.
+Until then every event that is passed through the event bus for that user id, will be sent to their respective SSE instance.
+
+=== Some useful links
+
+This chapter does not show it all, but if you find the topic interesting and want to learn more, then, here are some useful links to get you started.
+
+- The guide to using Apache Kafka with Quarkus - https://quarkus.io/guides/kafka
+- Getting started with Quarkus and Reactive - https://quarkus.io/guides/getting-started-reactive
+- Understanding Mutiny, asynchronous code and its relation to Vert.x
+- Using Vert.x with Quarkus
+* https://quarkus.io/guides/vertx-reference
+* https://quarkus.pro/guides/vertx.html
+- Using Vert.x event bus with Mutiny https://quarkus.io/guides/reactive-event-bus
+- Smallrye Mutiny documentation - https://smallrye.io/smallrye-mutiny/latest/
+- Eclipse Vert.x official documentation - https://vertx.io/docs/vertx-core/java/

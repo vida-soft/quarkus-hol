@@ -1,0 +1,24 @@
+@startuml
+!theme sketchy-outline
+skinparam maxMessageSize 200
+skinparam backgroundColor #White
+
+
+actor Subscriber as Sub #Blue
+participant MagMan as MM #Yellow
+entity Kafka as K #Orange
+participant SpendPal as SP #Green
+
+Sub -> MM: Subscribes SSE event bus, to receive real time notifications.
+Sub -> MM: POST ""subscription/{userId}""
+MM --> K: Sends message to ""payments"" topic
+MM -> Sub: ""204 NO_CONTENT""
+MM --> Sub: Sends SSE event that payment is being processed
+K --> SP: Reads from ""payments"" topic
+SP -> SP: Conducts payment processing
+SP --> K: Sends payment result to ""post-payments"" topic
+K --> MM: Reads ""post-payments"" topic
+MM -> MM: Activates the subscription for the user
+MM --> Sub: Sends SSE event that payment process is completed (with result and actions required)
+
+@enduml
