@@ -29,37 +29,6 @@ In *imperative programming*, you explicitly define the steps and order of execut
 It's like following a recipe, where you tell the computer exactly what to do and when to do it.
 In *reactive programming*, however, you define how your program should react to changes or events.
 It's more like setting up triggers and letting the program handle the responses automatically.
-Here is a comparison between the two to get better understanding of each one's advantage and disadvantages.
-
-.A comparison between reactive and imperative programming.
-[cols="h,1,1"]
-|===
-|Type of programming |Advantages |Disadvantages
-
-|Reactive
-a|
-- *Responsive:* Reacts to changes or events in real-time, providing a more interactive user experience.
-- *Concise:* Often results in cleaner and more concise code, especially when dealing with asynchronous operations.
-- *Scalable:* Well-suited for handling streams of data or events, making it scalable for applications with high loads.
-a|
-- *Learning Curve:* It can be more challenging for developers accustomed to imperative programming paradigms.
-- *Complexity:* Reactive systems can become complex to understand and debug, especially when dealing with complex event flows.
-- *Performance Overhead:* Reactive programming might introduce some performance overhead due to the additional layers of abstraction.
-
-|Imperative
-a|
-- *Straightforward Control Flow:* Imperative programming follows a step-by-step approach, making it easier to understand and reason about the flow of the program.
-- *Efficient for Small-Scale Problems:* For small, linear problems, imperative programming can be efficient and easy to implement.
-- *Close to Machine Language:* Imperative programming languages often map closely to the underlying hardware, making them efficient for low-level programming tasks.
-- *Mutability:* Imperative programming allows for mutable state, which can be useful for certain tasks where state needs to change frequently.
-- *Wide Adoption:* Imperative programming paradigms and languages like C, Java, and Python are widely adopted, with vast libraries and resources available for developers.
-a|
-- *Complexity:* As programs grow in size and complexity, managing mutable state and controlling flow with imperative constructs can become challenging and error-prone.
-- *Concurrency Issues:* Managing concurrency and parallelism in imperative programs can be difficult due to shared mutable state, leading to issues like race conditions and deadlocks.
-- *Debugging Challenges:* Imperative programs tend to be more prone to bugs and may also be hard to debug, especially when dealing with complex control flow and mutable state.
-- *Less Declarative:* Imperative programming focuses on how to achieve a result rather than what the desired result is, which can make code less readable and maintainable, especially for large-scale projects.
-- *Limited Compositionality:* Imperative code tends to be less composable than functional or reactive code, making it harder to reuse and refactor components.
-|===
 
 In conclusion, we are better off using reactive programing over imperative in the following scenarios:
 
