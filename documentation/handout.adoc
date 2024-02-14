@@ -28,3 +28,5 @@ include::10-rbac.adoc[]
 include::11-kafka-reactive-messaging.adoc[]
 
 include::12-mp-reactive-messaging-and-sse.adoc[]
+
+include::13-mp-fault-tolerance.adoc[]

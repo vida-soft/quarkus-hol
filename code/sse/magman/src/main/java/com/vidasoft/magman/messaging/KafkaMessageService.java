@@ -10,6 +10,7 @@ import jakarta.enterprise.event.Event;
 import jakarta.inject.Inject;
 import jakarta.json.bind.JsonbBuilder;
 import jakarta.transaction.Transactional;
+import org.eclipse.microprofile.faulttolerance.Retry;
 import org.eclipse.microprofile.reactive.messaging.Channel;
 import org.eclipse.microprofile.reactive.messaging.Emitter;
 import org.eclipse.microprofile.reactive.messaging.Incoming;
@@ -18,6 +19,8 @@ import java.util.logging.Logger;
 
 @ApplicationScoped
 public class KafkaMessageService {
+
+    private long sendPaymentsRetries = 0;
 
     private static final Logger LOGGER = Logger.getLogger(KafkaMessageService.class.getName());
 
@@ -48,16 +51,14 @@ public class KafkaMessageService {
         subscriberChargedEvent.fire(eventPayload);
     }
 
+    @Retry
     public void sendPaymentsMessage(Long userId, PaymentPayload payload) {
+        LOGGER.info("Attempting to send payment message");
         String payloadString = JsonbBuilder.create().toJson(payload);
         paymentsEmitter.send(payloadString)
                 .thenRun(() ->
                         eventBus.send(userId.toString(), new SsePayload(SsePayload.Type.PAYMENTS, "Payment information sent!").toString()))
-                .exceptionally(throwable -> {
-                    LOGGER.severe("Unable to send message through Kafka: %s".formatted(throwable.getMessage()));
-                    eventBus.send(userId.toString(), new SsePayload(SsePayload.Type.PAYMENTS, "Error sending Payment request").toString());
-                    return null;
-                });
+                .toCompletableFuture().join();
         LOGGER.info("Successfully emitted message to payments topic: %s".formatted(payloadString));
     }
 

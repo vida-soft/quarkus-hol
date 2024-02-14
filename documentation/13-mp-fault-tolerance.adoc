@@ -1,0 +1,79 @@
+:imagesdir: img
+
+== Fault tolerance with MicroProfile
+
+So far we have learned how to use MicroProfile specifications to add configurations, communicate through rest client and kafka and secure the access to our application.
+Our next endeavour will be the fault tolerance specifications of MicroProfile.
+
+.What is MP Fault tolerance?
+****************************
+MP Fault Tolerance provides a simple and flexible solution to build fault-tolerant microservices. Fault tolerance leverages different strategies to guide the execution and result of logic. As stated in the MicroProfile website, retry policies, bulkheads, and circuit breakers are popular concepts in this area. They dictate whether and when executions take place, and fallbacks offer an alternative result when an execution does not complete successfully.
+****************************
+
+Imagine that your application has to communicate to various other services internal or external and due to high traffic load or delay in communication the request fails to arrive, returns bad responses or something else fails.
+In this type of scenario, you would likely avoid telling the user that something went wrong until there is nothing you can do.
+Instead, what is a good practice to do is **retry** the failed call a couple of times, or maybe go through an alternative routine.
+ +
+This is the type of problem that MP Fault tolerance is here to help you with.
+Instead of reinventing the wheel, you can use libraries specialized for this types of scenarios.
+Instead reinventing the wheel for every application you have, by implementing loops in a try-catch blocks or interceptors to handle exceptions and provide alternate flows, MP Fault Tolerance has you covered with very convenient APIs to handle such type of events.
+
+Let's hop into a scenario where fault tolerance would be useful:
+
+image::fault-tolerance-example.png[align=center]
+
+This is a quite simple scenario, that clearly shows how we can use MP Fault Tolerance to tolerate the faults in the communications between our systems.
+Since Kafka is an external source that we pass data through, we can always expect hiccups to happen:
+
+- The network connection might stop
+- The zookeeper might be down
+- Kafka may be too busy to acknowledge the message on time and the server times out
+- The request might be malformed (although we are yet not sure about that)
+
+Juts like quantum physics, the results and the underlying reasons behind them are unpredictable.
+Anything could happen, and we want to make sure that we have maximised our probability to process the customer's inquiry and minimise responses such as _"Something went wrong"_, or... _"Please try again later"_.
+
+=== The `@Retry` annotation
+
+`org.eclipse.microprofile.faulttolerance.Retry` is our first and most basic mechanism from the MP Fault Tolerance toolset.
+It simply does what it says.
+Once you place this annotation on a method it will invoke it in an interceptor, that is going to listen for exceptions.
+If an exception occurs, the interceptor will try to invoke the method again, as many times as the developer has defined.
+If the exception keeps being thrown, once the threshold has been surpassed, the interceptor will proceed by throwing the exception to the invocation class.
+
+We can find usage of the `@Retry` annotation within the communication of MagMan and Kafka.
+This will allow us to tackle any unexpected problems that might occur and are not handled by our application, such as network failures or any other unexpected interruptions.
+
+To start off, let's first introduce the latest plugin to our project - `smallrye-fault-tolerance`.
+
+[source, xml]
+----
+<dependency>
+   <groupId>io.quarkus</groupId>
+   <artifactId>quarkus-smallrye-fault-tolerance</artifactId>
+</dependency>
+----
+
+TIP: Make sure to refresh your Maven dependencies, once you add the new plugin to be able to see the new APIs and compile the code from your IDE.
+
+Once we have that added, we will proceed with adding the `@Retry` annotation to `com.vidasoft.magman.messaging.KafkaMessageService#sendPaymentsMessage`
+
+[source,java]
+----
+@Retry // org.eclipse.microprofile.faulttolerance.Retry <.>
+public void sendPaymentsMessage(Long userId, PaymentPayload payload) {
+    String payloadString = JsonbBuilder.create().toJson(payload);
+    paymentsEmitter.send(payloadString)
+            .thenRun(() ->
+                    eventBus.send(userId.toString(), new SsePayload(SsePayload.Type.PAYMENTS, "Payment information sent!").toString()))
+            .exceptionally(throwable -> {
+                LOGGER.severe("Unable to send message through Kafka: %s".formatted(throwable.getMessage()));
+                eventBus.send(userId.toString(), new SsePayload(SsePayload.Type.PAYMENTS, "Error sending Payment request").toString());
+                return null;
+            });
+    LOGGER.info("Successfully emitted message to payments topic: %s".formatted(payloadString));
+}
+----
+<.> By default the threshold of the `Retry` interceptor is 3. Meaning that this method will be called 1 + additional 3 times is an exception is thrown, before it fails.
+
+In this scenario
