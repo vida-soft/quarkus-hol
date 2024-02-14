@@ -1,0 +1,27 @@
+@startuml
+!theme sketchy-outline
+skinparam maxMessageSize 200
+skinparam backgroundColor #White
+
+actor User as U
+participant MagMan as MM #orange
+entity Kafka as K #Red
+participant SpendPal as SP #Yellow
+
+U -> MM: Sends request to renew subscription
+MM -->x K: Sends message to ""payments"" topic, but fails
+MM -> U: 204 ""NO_CONTENT""
+MM --> U: Sends SSE notification that a payment process has started
+MM -> MM: Throws an exception, that is handled by MP Fault Tolerance
+MM --> K: Retries writing to ""payments"" topic successfully
+K --> SP: Rreads message from ""payments"" topic
+SP -> SP: Processes payment
+SP --> K: Sends message through ""post-payments"" topic
+K --> MM: Reads ""post-payments"" topic
+MM -> MM: Processes transaction details
+MM --> U: Sends SSE notification about the status of the transaction
+
+
+
+
+@enduml

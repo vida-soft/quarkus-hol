@@ -1,0 +1,417 @@
+:imagesdir: img
+
+== Fault tolerance with MicroProfile
+
+So far we have learned how to use MicroProfile specifications to add configurations, communicate through rest client and kafka and secure the access to our application.
+Our next endeavour will be the fault tolerance specifications of MicroProfile.
+
+.What is MP Fault tolerance?
+****************************
+MP Fault Tolerance provides a simple and flexible solution to build fault-tolerant microservices. Fault tolerance leverages different strategies to guide the execution and result of logic. As stated in the MicroProfile website, retry policies, bulkheads, and circuit breakers are popular concepts in this area. They dictate whether and when executions take place, and fallbacks offer an alternative result when an execution does not complete successfully.
+****************************
+
+Imagine that your application has to communicate to various other services internal or external and due to high traffic load or delay in communication the request fails to arrive, returns bad responses or something else fails.
+In this type of scenario, you would likely avoid telling the user that something went wrong until there is nothing you can do.
+Instead, what is a good practice to do is **retry** the failed call a couple of times, or maybe go through an alternative routine.
+ +
+This is the type of problem that MP Fault tolerance is here to help you with.
+Instead of reinventing the wheel, you can use libraries specialized for this types of scenarios.
+Instead reinventing the wheel for every application you have, by implementing loops in a try-catch blocks or interceptors to handle exceptions and provide alternate flows, MP Fault Tolerance has you covered with very convenient APIs to handle such type of events.
+
+Let's hop into a scenario where fault tolerance would be useful:
+
+image::fault-tolerance-example.png[align=center]
+
+This is a quite simple scenario, that clearly shows how we can use MP Fault Tolerance to tolerate the faults in the communications between our systems.
+Since Kafka is an external source that we pass data through, we can always expect hiccups to happen:
+
+- The network connection might stop
+- The zookeeper might be down
+- Kafka may be too busy to acknowledge the message on time and the server times out
+- The request might be malformed (although we are yet not sure about that)
+
+Juts like quantum physics, the results and the underlying reasons behind them are unpredictable.
+Anything could happen, and we want to make sure that we have maximised our probability to process the customer's inquiry and minimise responses such as _"Something went wrong"_, or... _"Please try again later"_.
+To demonstrate how we can better tackle such scenarios, we are going to simulate the scenario in the diagram and see how MP Fault Tolerance helps us resolve the issues.
+
+=== The `@Retry` annotation
+
+`org.eclipse.microprofile.faulttolerance.Retry` is our first and most basic mechanism from the MP Fault Tolerance toolset.
+It simply does what it says.
+Once you place this annotation on a method it will invoke it in an interceptor, that is going to listen for exceptions.
+If an exception occurs, the interceptor will try to invoke the method again, as many times as the developer has defined.
+If the exception keeps being thrown, once the threshold has been surpassed, the interceptor will proceed by throwing the exception to the invocation class.
+
+We can find usage of the `@Retry` annotation within the communication of MagMan and Kafka.
+This will allow us to tackle any unexpected problems that might occur and are not handled by our application, such as network failures or any other unexpected interruptions.
+
+To start off, let's first introduce the latest plugin to our project - `smallrye-fault-tolerance`.
+
+[source, xml]
+----
+<dependency>
+   <groupId>io.quarkus</groupId>
+   <artifactId>quarkus-smallrye-fault-tolerance</artifactId>
+</dependency>
+----
+
+TIP: Make sure to refresh your Maven dependencies, once you add the new plugin to be able to see the new APIs and compile the code from your IDE.
+
+Our next step is to make the communication with Kafka more brittle.
+Currently, the smallrye kafka plugin is configured to infinitely retry to publish a message to a topic,
+meaning that if we break the connection with the publisher and the broker, the server will endlessly try to reconnect and halt any messages until the connection is reestablished.
+As good as it might be, we may want to try different ways to charge the customer if Kafka is not working.
+Although the process is asynchronous, the user will have to wait too much time to get their subscription renewed, which might be a problem on its own.
+
+To make Kafka throw an exception when it's unable to publish a message to the topic, we are going to add a new property to our `application.properties` file:
+
+[source, properties]
+----
+kafka.retries=0
+----
+This will tell the Kafka publisher to not reattempt sending the message when it fails.
+Instead, it will throw an exception that will be handled by the code we already implemented for the purpose.
+
+NOTE: Although reattempts of publishing a message can be stopped, this does not stop Kafka from trying and waiting for a connection to happen.
+Keep in mind that this will add additional delay to the result we are going to expect.
+
+Once we have that added, we will proceed with adding the `@Retry` annotation to `com.vidasoft.magman.messaging.KafkaMessageService#sendPaymentsMessage`
+
+[source,java]
+----
+@Retry // org.eclipse.microprofile.faulttolerance.Retry <.>
+public void sendPaymentsMessage(Long userId, PaymentPayload payload) {
+    String payloadString = JsonbBuilder.create().toJson(payload);
+    paymentsEmitter.send(payloadString)
+            .thenRun(() ->
+                    eventBus.send(userId.toString(), new SsePayload(SsePayload.Type.PAYMENTS, "Payment information sent!").toString()))
+            .exceptionally(throwable -> {
+                LOGGER.severe("Unable to send message through Kafka: %s".formatted(throwable.getMessage()));
+                eventBus.send(userId.toString(), new SsePayload(SsePayload.Type.PAYMENTS, "Error sending Payment request").toString());
+                return null;
+            });
+    LOGGER.info("Successfully emitted message to payments topic: %s".formatted(payloadString));
+}
+----
+<.> By default, the threshold of the `Retry` interceptor is 3. Meaning that this method will be called 3 times if an exception is thrown.
+If you want to increase/decrease the threshold, you can use one of `@Retry` 's attributes `maxRetries`.
+
+With the addition of this annotation if `sendPaymentsMessage` throws an exception, we expect it to be handled by MP Fault Tolerance and the method to be called again.
+In the current state of the code, though, we are not going to be able to catch that exception, because we handle it within our Vert.x functions, which work asynchronously.
+To expose the exceptions that are thrown in `exceptioinally` we will have to synchronize emitter thread with the request's thread.
+But don't worry this will be temporarily.
+
+[source, java]
+----
+public void sendPaymentsMessage(Long userId, PaymentPayload payload) {
+    LOGGER.info("Attempting to send payment message"); <.>
+    String payloadString = JsonbBuilder.create().toJson(payload);
+    paymentsEmitter.send(payloadString)
+            .thenRun(() ->
+                    eventBus.send(userId.toString(), new SsePayload(SsePayload.Type.PAYMENTS, "Payment information sent!").toString()))
+            .toCompletableFuture().join(); <.>
+    LOGGER.info("Successfully emitted message to payments topic: %s".formatted(payloadString));
+}
+----
+<.> Let's add a log to be able to count how many retrials were attempted.
+<.> For now, as mentioned we will remove the exception handling here
+
+Now let's attempt to break our connection.
+
+. Start all applications: MagMan, SpendPal, docker-compoe
+. Do the normal flow to make sure payments are still processed through kafka, without problems
+. Stop the docker containers by running `docker-compose down` in the root directory of the MagMan project
+. Reattempt sending request to Kafka
+. In a couple of minutes, you should be expecting a failure, with Transaction timeout exception.
+You should also see 3 new logs with the message `INFO  [com.vid.mag.mes.KafkaMessageService] (executor-thread-1) Attempting to send payment message`.
+
+.We'll make a slight digression to clean up some debt...
+***********************
+Sometimes when dealing with asynchronous code or delays, that involve transactions, we might need to tackle some issues due to how scopes are transitioned between threads.
+In the current situation, since this is not an asynchronous operation anymore, we are going to have to wait a bit, before seeing any exception thrown.
+But there is one thing that doesn't like to wait - the transaction.
+Our `@Transactional` scope has a default timeout, that is very likely to be reached when all the retrials have passed.
+If we go back to our `PaymentService` class we are going to find the following piece of code:
+
+[source, java]
+----
+try {
+    kafkaMessageService.sendPaymentsMessage(subscriber.id, new PaymentPayload(subscriber.userName, creditCardDTO));
+    return true;
+} catch (Exception e) {
+    LOGGER.severe(e.getMessage());
+    return chargeSubscriberThroughRest(subscriber);
+}
+----
+
+If `sendPaymentsMessage` becomes synchronous when an exception is thrown and the fallback mechanism of `chargeSubscriberThroughRest`
+gets triggered.
+At this point though so much time has passed that the transaction has timed out.
+When we enter `chargeSubscriberThroughRest`, the moment we try to do something with the subscription object, an exception will be thrown and the changes will not take an effect.
+
+To resolve the issue, we are going to try and limit the scope of the transaction to only where it is needed:
+
+. Remove the `@Transactional` annotation from `SubscriptionResource#chargeSubscriber`.
+. Remove the `@Transactional` annotation from `PaymentService#chargeSubscriber`.
+. Extract the code that creates subscriptions into a separate method and make it public and `@Transactional`.
++
+[source, java]
+----
+    public boolean chargeSubscriber(Subscriber subscriber) throws SpendPalException {
+        Subscription subscription = createSubscription(subscriber); <1>
+
+        if (subscriber.creditCard != null) {
+            CreditCardDTO creditCardDTO = new CreditCardDTO(subscriber.creditCard);
+            try {
+                kafkaMessageService.sendPaymentsMessage(subscriber.id, new PaymentPayload(subscriber.userName, creditCardDTO));
+                return true;
+            } catch (Exception e) {
+                LOGGER.severe(e.getMessage());
+                return chargeSubscriberThroughRest(subscriber);
+            }
+        } else {
+            subscription.status = SubscriptionStatus.FAILED;
+            subscription.completed = LocalDateTime.now();
+            return false;
+        }
+
+    }
+
+    @Transactional
+    public Subscription createSubscription(Subscriber subscriber) {
+        failPreviousSubscriptionAttempt(subscriber); <.>
+        Subscription subscription = new Subscription(subscriber);
+        subscription.persist();
+        return subscription;
+    }
+----
+<1> We have moved `failPreviousSubscriptionAttempt` to `createSubscription` in order to keep it in the transaction scope.
+. Make `chargeSubscriberThroughRest` public and transactional
+
+Now if you try and execute the `chargeSubscriber` method again, you will get 204 as a response and if we check the expiration date of the subscription, we will see that it has increased with an year.
+Our fallback REST method is being called.
+***********************
+
+
+=== The `@Asynchronous` annotation
+
+Previously we have shown that you can use the reactive functions from Mutiny and Vert.x to achieve asynchronous code execution.
+But how to you turn an imperative piece of code into a reactive one?
+By using the `@org.eclipse.microprofile.faulttolerance.Asynchronous` annotation.
+
+We will start off, by refactoring `KafkaMessageService#sendPaymentsMessage`.
+
+[source, java]
+----
+@Retry
+@Asynchronous <.>
+public CompletionStage<Void> sendPaymentsMessage(Long userId, PaymentPayload payload) { <.>
+    LOGGER.info("Attempting to send payment message");
+    //same implementation ...
+
+    return CompletableFuture.completedFuture(null); <.>
+}
+----
+<.> First we place the `@Asynchronous` annotation to the desired method.
++
+CAUTION: Make sure that the method you are making asynchronous is `public`, otherwise MP Fault Tolerance will not be able to recognise this method as asynchronous, and it will run synchronised.
+<.> All asynchronous methods should return an implementation of `java.util.concurrent.Future` or `java.util.concurrent.CompletionStage`.
++
+NOTE: Since `java.util.concurrent.Future` is expecting a generic type to serve as a result, we are going to provide the object `Void` which is used just as a placeholder in order to be able to satisfy the syntax of generic types.
+<.> Finally, we are using the builder of `CompletableFuture` to pass the return type.
+Since we cannot instantiate `Void`, the most relevant thing to do here is put `null` inside the parameter of `completedFuture()`.
+
+Next, we are going to modify the `PaymentService` again by altering our `chargeCustomer` code.
+
+[source,java]
+----
+    public boolean chargeSubscriber(Subscriber subscriber) {
+        Subscription subscription = createSubscription(subscriber);
+
+        if (subscriber.creditCard != null) {
+            CreditCardDTO creditCardDTO = new CreditCardDTO(subscriber.creditCard);
+            kafkaMessageService.sendPaymentsMessage(new PaymentPayload(subscriber.userName, creditCardDTO)) <.>
+                    .thenRun(() -> eventBus.send(subscriber.id + "",
+                            new SsePayload(SsePayload.Type.PAYMENTS, "Payment information sent!").toString())) <.>
+                    .exceptionally(throwable -> { <.>
+                        LOGGER.severe(throwable.getMessage());
+                        eventBus.send(subscriber.id + "", new SsePayload(SsePayload.Type.PAYMENTS,
+                                "Error sending message with Kafka. Will try REST: %s".formatted(throwable.getMessage())).toString());
+                        try {
+                            chargeSubscriberThroughRest(subscriber);
+                        } catch (SpendPalException spe) {
+                            try (ByteArrayInputStream bais = (ByteArrayInputStream) spe.getBody()) {
+                                String responseMessage = new String(bais.readAllBytes());
+                                eventBus.send(subscriber.id + "", new SsePayload(SsePayload.Type.PAYMENTS, "Error making subscription through REST. " +
+                                        "Please retry making a subscription: %s".formatted(responseMessage)));
+                            } catch (IOException ioe) {
+                                eventBus.send(subscriber.id + "", new SsePayload(SsePayload.Type.PAYMENTS, "Error making subscription through REST. " +
+                                        "Please retry making a subscription: %s".formatted(ioe.getMessage())));
+                            }
+                        }
+                        return null;
+                    });
+
+            return true;
+        } else {
+            subscription.status = SubscriptionStatus.FAILED;
+            subscription.completed = LocalDateTime.now();
+            return false;
+        }
+    }
+----
+<.> Since we are returning a `CompletionStage` here, we can handle the result of this state in the future, without waiting for the Kafka message to fail.
+<.> If the method has returned with no error, we are going to fall into the `thenRun()` function.
+<.> If an exception is thrown, however, we are going to fall into the `exceptionally()` method, where we have to run our fallback logic.
+
+Remember that all of this is happening on a separate thread.
+Now when you run the code, unless you have not provided credit card for the customer, you will always get 204 as a response.
+Notice that we have moved part of the eventbus logic here.
+This will help us to  track what happens in the future, by reading the events from the SSE endpoint we previously made.
+And if you have configured everything correctly at the end you should see the following event messages:
+
+.The first two messages bottom-to-top are when the flow ran correctly. Then after stopping the Docker containers we see that we had an error, and we reached into the fallback mechanism.
+image::sse-messages-async.png[align=center]
+
+Although this works, it doesn't look as neat.
+Let's try and change that.
+
+=== The `@Timeout` annotation
+
+Another annotation in the MP Fault Tolerance suite is the `@Timeout` annotation.
+It simply does what it says.
+Adding this annotation to a method will cause it to break the execution if it takes over a certain amount of time.
+And guess what, we need to wait over three minutes to get an exception from Kafka.
+This is too long of a wait for the customer to get their subscription extended.
+To speed up the process we are going to stop tolerating the wait time to reconnect with Kafka to emmit the message.
+
+[source, java]
+----
+@Retry
+@Timeout <.>
+@Asynchronous
+public CompletionStage<Void> sendPaymentsMessage(PaymentPayload payload) {
+ //implementation
+}
+----
+<.> By default `@Timeout` will wait 1000 milliseconds before it interrupts the execution of the method.
+You can increase/decrease that timeout, and also set the preferable unit, withing the annotation's parameters.
+Those parameters are optional and may be omitted if you are happy with the default options.
+
+Now if we try to call `chargeCustomer` again, we should wait around 3 seconds to execute the fallback logic.
+Talking about fallback logic, it is time to finally clear out our fallback mechanism and make it a bit more simple.
+
+=== The `@Fallback` annotation
+
+`@Fallback`, just as the other annotations from this library, maintains interception that will invoke an alternate method in the case where the main method has failed.
+Instead of us having to make a try-catch logic where we have to manually invoke the alternate execution.
+We can let our code do it on its own, when it decides it is time to call it.
+
+In our scenario, when Kafka fails, we want to automatically trigger the fallback method and pay the subscription through REST.
+To make this happen there are a couple of steps we need to perform.
+
+. Annotate the method we expect to fail with `@Fallback`
+. Provide information in the `@Fallback` parameters what should and when should happen upon the event of failure.
+. Implement the fallback code, that is going to handle the alternate implementation.
+
+There are two ways to implement the fallback code:
+
+. By keeping the signature of the failed method to the fallback method and setting it in the `@Fallback` annotation parameter.
+. By creating a class, that implements the https://download.eclipse.org/microprofile/microprofile-fault-tolerance-2.1/apidocs/org/eclipse/microprofile/faulttolerance/FallbackHandler.html[FallbackHandler] class.
+
+The first option is more limited and requires the fallback method to be in the same class, while the other needs to be implemented on a separate class and is more abstract to work with.
+The second option works similar to conventional CDI interceptors.
+
+For ease, we are just going to adapt the `chargeSubscriberThroughRest` method to be invoked from a fallback trigger.
+
+. Move `chargeSubscriberThroughRest` from `PaymentService` to `KafkaMessageService`.
+As mentioned we need to have both methods in one place in order for the fallback to work.
+. Add/adapt the code to work with the new class it is in.
+. Make the signature of `chargeSubscriberThroughRest` the same as `sendPaymentsMessage`.
++
+[source, java]
+----
+    @Retry
+    @Timeout
+    @Fallback(fallbackMethod = "chargeSubscriberThroughRest") <.>
+    @Asynchronous
+    public CompletionStage<Void> sendPaymentsMessage(PaymentPayload payload) {
+        // implementation
+    }
+
+    @Transactional
+    public CompletionStage<Void> chargeSubscriberThroughRest(PaymentPayload payload) throws SpendPalException {
+        Subscriber subscriber = Subscriber.find("userName", payload.username()).firstResult();
+
+        // same implementation as before
+
+        return CompletableFuture.completedFuture(null);
+    }
+----
+<.> Notice that we added the `@Fallback` annotation along with the name of the method we are going to fallback on.
+. Place the `@Fallback` annotation on `sendPaymentsMessage` along with the name of the method we are going to call.
+. Refactor the `exceptionally` logic inside `PaymentService#chargeCustomer`.
+We no longer need to call `chargeSubscriberThroughRest` manually.
+
+At the end it should look something like this:
+[source, java]
+----
+public boolean chargeSubscriber(Subscriber subscriber) {
+    Subscription subscription = createSubscription(subscriber);
+
+    if (subscriber.creditCard != null) {
+        CreditCardDTO creditCardDTO = new CreditCardDTO(subscriber.creditCard);
+        kafkaMessageService.sendPaymentsMessage(new PaymentPayload(subscriber.userName, creditCardDTO))
+                .thenRun(() -> eventBus.send(subscriber.id + "",
+                        new SsePayload(SsePayload.Type.PAYMENTS, "Payment information sent!").toString()))
+                .exceptionally(throwable -> {
+                    LOGGER.severe(throwable.getMessage());
+                    eventBus.send(subscriber.id + "", new SsePayload(SsePayload.Type.PAYMENTS, "Error making subscription. " +
+                            "Please retry making a subscription: %s".formatted(throwable.getMessage())));
+                    return null;
+                });
+
+        return true;
+    } else {
+        subscription.status = SubscriptionStatus.FAILED;
+        subscription.completed = LocalDateTime.now();
+        return false;
+    }
+}
+----
+
+=== The `@CircuitBreaker`
+
+The last MP Fault Tolerance feature we are going to look at is the circuit breaker.
+So far when we can't reach out to Kafka, we have to wait until the `@Timeout` decided that enough time has passed to trigger the `@Fallback` logic.
+In our current configuration this takes about 3 seconds.
+But if we add more users asking for the same resource, the computational time will start adding up.
+
+What if instead of trying to execute `sendPaymentsMessage` every time a new payment request is opened, we directly called our fallback `chargeSubscriberThroughRest`.
+This would drastically speed up the amount of processed payments.
+What `@CircuitBreaker` does is help you define a certain threshold where if the method fails, it will stop being called for a certain amount of time, to avoid further damage by not executing functionality that is doomed to fail.
+
+We can for example define our server to try calling `sendPaymentsMessage` and if it fails over 5 times, for the next 5 seconds to directly call the fallback.
+This is how we do it:
+
+[source, java]
+----
+@Retry
+@Timeout(5000) <.>
+@Fallback(fallbackMethod = "chargeSubscriberThroughRest") <.>
+@CircuitBreaker(requestVolumeThreshold = 3)
+@Asynchronous
+public CompletionStage<Void> sendPaymentsMessage(PaymentPayload payload) {
+   //implementation unchanged
+}
+----
+<.> We increased the timeout here in order to see the change more obviously, based on the time we wait
+<.> By default `CircuitBreaker` will get triggered if the method fails 20 times, so we need to change it to something lower, to see any results faster.
+Other attributes are left with their defaults, meaning that the circuit will be opened for 5, bypassing `sendPaymentsMessage`, without having to retry and wait for something to happen second, and directly call `chargeSubscriberThroughRest`.
+After the cool-down has passed, the circuit will close, allowing for additional calls to `sendPaymentsMessage`, until the failure rate is met again.
+
+TIP: You can find out more about CircuitBreaker's functionality in this beautiful article by Open Liberty https://openliberty.io/guides/circuit-breaker.html[here].
+
+Let's try our application.
+If everything is configured properly, you should see that when Kafka is down, the first request is processed slower, but the rest are directly processed by the fallback method, until 5 seconds have passed, and the circuit is closed again.
+Fell free to play with the thresholds if you want to observe a stronger effect of this or decrease it.
