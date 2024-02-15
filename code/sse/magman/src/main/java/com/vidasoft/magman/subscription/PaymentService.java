@@ -8,6 +8,7 @@ import com.vidasoft.magman.model.SubscriptionStatus;
 import com.vidasoft.magman.spendpal.ConfirmationDTO;
 import com.vidasoft.magman.spendpal.SpendPalClient;
 import com.vidasoft.magman.spendpal.SpendPalException;
+import jakarta.enterprise.context.control.ActivateRequestContext;
 import jakarta.transaction.Transactional;
 import org.eclipse.microprofile.rest.client.inject.RestClient;
 
@@ -61,6 +62,7 @@ public class PaymentService {
     }
 
     private boolean chargeSubscriberThroughRest(Subscriber subscriber) throws SpendPalException {
+        subscriber = Subscriber.getEntityManager().merge(subscriber);
         ConfirmationDTO paymentResult = spendPalClient.chargeCustomer(new CreditCardDTO(subscriber.creditCard));
         LOGGER.log(Level.INFO, "Charging subscriber with id: {0}  and card type {1} of number: {2}",
                 new Object[]{subscriber.id, subscriber.creditCard.creditCardType, subscriber.creditCard.number});

@@ -32,6 +32,7 @@ Since Kafka is an external source that we pass data through, we can always expec
 
 Juts like quantum physics, the results and the underlying reasons behind them are unpredictable.
 Anything could happen, and we want to make sure that we have maximised our probability to process the customer's inquiry and minimise responses such as _"Something went wrong"_, or... _"Please try again later"_.
+To demonstrate how we can better tackle such scenarios, we are going to simulate the scenario in the diagram and see how MP Fault Tolerance helps us resolve the issues.
 
 === The `@Retry` annotation
 
@@ -56,6 +57,24 @@ To start off, let's first introduce the latest plugin to our project - `smallrye
 
 TIP: Make sure to refresh your Maven dependencies, once you add the new plugin to be able to see the new APIs and compile the code from your IDE.
 
+Our next step is to make the communication with Kafka more brittle.
+Currently, the smallrye kafka plugin is configured to infinitely retry to publish a message to a topic,
+meaning that if we break the connection with the publisher and the broker, the server will endlessly try to reconnect and halt any messages until the connection is reestablished.
+As good as it might be, we may want to try different ways to charge the customer if Kafka is not working.
+Although the process is asynchronous, the user will have to wait too much time to get their subscription renewed, which might be a problem on its own.
+
+To make Kafka throw an exception when it's unable to publish a message to the topic, we are going to add a new property to our `application.properties` file:
+
+[source, properties]
+----
+kafka.retries=0
+----
+This will tell the Kafka publisher to not reattempt sending the message when it fails.
+Instead, it will throw an exception that will be handled by the code we already implemented for the purpose.
+
+NOTE: Although reattempts of publishing a message can be stopped, this does not stop Kafka from trying and waiting for a connection to happen.
+Keep in mind that this will add additional delay to the result we are going to expect.
+
 Once we have that added, we will proceed with adding the `@Retry` annotation to `com.vidasoft.magman.messaging.KafkaMessageService#sendPaymentsMessage`
 
 [source,java]
@@ -74,6 +93,121 @@ public void sendPaymentsMessage(Long userId, PaymentPayload payload) {
     LOGGER.info("Successfully emitted message to payments topic: %s".formatted(payloadString));
 }
 ----
-<.> By default the threshold of the `Retry` interceptor is 3. Meaning that this method will be called 1 + additional 3 times is an exception is thrown, before it fails.
+<.> By default, the threshold of the `Retry` interceptor is 3. Meaning that this method will be called 3 times if an exception is thrown.
+If you want to increase/decrease the threshold, you can use one of `@Retry` 's attributes `maxRetries`.
 
-In this scenario
+With the addition of this annotation if `sendPaymentsMessage` throws an exception, we expect it to be handled by MP Fault Tolerance and the method to be called again.
+In the current state of the code, though, we are not going to be able to catch that exception, because we handle it within our Vert.x functions, which work asynchronously.
+To expose the exceptions that are thrown in `exceptioinally` we will have to synchronize emitter thread with the request's thread.
+But don't worry this will be temporarily.
+
+[source, java]
+----
+public void sendPaymentsMessage(Long userId, PaymentPayload payload) {
+    LOGGER.info("Attempting to send payment message"); <.>
+    String payloadString = JsonbBuilder.create().toJson(payload);
+    paymentsEmitter.send(payloadString)
+            .thenRun(() ->
+                    eventBus.send(userId.toString(), new SsePayload(SsePayload.Type.PAYMENTS, "Payment information sent!").toString()))
+            .toCompletableFuture().join(); <.>
+    LOGGER.info("Successfully emitted message to payments topic: %s".formatted(payloadString));
+}
+----
+<.> Let's add a log to be able to count how many retrials were attempted.
+<.> For now, as mentioned we will remove the exception handling here
+
+Now let's attempt to break our connection.
+
+. Start all applications: MagMan, SpendPal, docker-compoe
+. Do the normal flow to make sure payments are still processed through kafka, without problems
+. Stop the docker containers by running `docker-compose down` in the root directory of the MagMan project
+. Reattempt sending request to Kafka
+. In a couple of minutes, you should be expecting a failure, with Transaction timeout exception.
+You should also see 3 new logs with the message `INFO  [com.vid.mag.mes.KafkaMessageService] (executor-thread-1) Attempting to send payment message`.
+
+Let's explain what's happening...
+
+Since this is not an asynchronous operation anymore, we are going to have to wait a bit, before seeing any exception thrown.
+But there is one thing that doesn't like to wait - the transaction.
+Our `@Transactional` scope has a default timeout, that is very likely to be reached when all the retrials have passed.
+If we go back to our `PaymentService` class we are going to find the following peace of code:
+
+[source, java]
+----
+try {
+    kafkaMessageService.sendPaymentsMessage(subscriber.id, new PaymentPayload(subscriber.userName, creditCardDTO));
+    return true;
+} catch (Exception e) {
+    LOGGER.severe(e.getMessage());
+    return chargeSubscriberThroughRest(subscriber);
+}
+----
+
+If `sendPaymentsMessage` becomes synchronous when an exception is thrown and the fallback mechanism of `chargeSubscriberThroughRest`
+gets triggered.
+At this point though so much time has passed that the transaction has timed out.
+When we enter `chargeSubscriberThroughRest`, the moment we try to do something with the subscription object, an exception will be thrown and the changes will not take an effect.
+
+To resolve the issue with the timeout, we can do either of the three:
+
+- Extend the timeout of the transactional scope, by placing the annotation `@TransactionConfiguration(timeout = 10000)` on the entry point of the transaction (The first place where `@Transactional` was used).
+- Wrap `chargeSubscriberThroughRest` on a new transaction, by setting the `TxType`: `@Transactional(Transactional.TxType.REQUIRES_NEW)`
++
+CAUTION: This also requires you to make the method public
+- Decentralise the methods that start a transaction - remove `@Transactional` from the entry point of the resource and place the annotation only where it is needed.
+This will work, but you'll need to do more refactoring and will add unneeded complications of the implementation.
+
+We are going to go with the first approach and put the timeout configuration to the entry point of the transaction:
+
+[source, java]
+----
+ @POST
+ @Transactional
+ @TransactionConfiguration(timeout = 10000) <.>
+ @RolesAllowed({Subscriber.ROLE_NAME})
+ @Produces(MediaType.APPLICATION_JSON)
+ public Response chargeSubscriber() {
+ //implementation
+ }
+----
+<.> The timeout is measured in seconds.
+
+Now if we try the request again, we should be able to see 204 as a response and our subscription, should have been processed through REST.
+If everything runs as expected, it will be time to make the process asynchronous again, and we are going to use our next annotation from MP Fault Tolerance for that.
+
+=== The `@Asynchronous` annotation
+
+Previously we have shown that you can use the reactive functions from Mutiny and Vert.x to achieve asynchronous code invocation.
+There is also an imperative way to do it, by using the `@org.eclipse.microprofile.faulttolerance.Asynchronous` annotation.
+To start off, we are going to place this annotation on the `sendPaymentsMessage` method in `KafkaMessageService`.
+
+[source, java]
+----
+ @Retry
+ @Asynchronous
+ public Future<Void> sendPaymentsMessage(Long userId, PaymentPayload payload) { <.>
+    //implementation
+ }
+----
+<.> Methods annotated with `@Asynchronous` must be public and return `java.util.concurrent.Future`.
+This will also allow us to control what happens during different outcomes.
+
+> But how do you return `Void` you might ask?
+
+You simply don't.
+`Void` is a placeholder object to help satisfy generic types when they need a type to get returned.
+But when you need to return something, you simply need to return null.
+And in our case:
+
+[source, java]
+----
+ @Retry
+ @Asynchronous
+ public Future<Void> sendPaymentsMessage(Long userId, PaymentPayload payload) {
+     // the same implementation
+     return CompletableFuture.completedFuture(null);
+ }
+----
+
+Now we have to go to and handle that future event in the `PaymentService`:
+

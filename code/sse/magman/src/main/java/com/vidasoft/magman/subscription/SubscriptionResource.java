@@ -5,6 +5,7 @@ import com.vidasoft.magman.model.Subscriber;
 import com.vidasoft.magman.model.User;
 import com.vidasoft.magman.security.LoggedUser;
 import com.vidasoft.magman.spendpal.SpendPalException;
+import io.quarkus.narayana.jta.runtime.TransactionConfiguration;
 import io.quarkus.security.Authenticated;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.enterprise.context.RequestScoped;
@@ -49,6 +50,7 @@ public class SubscriptionResource {
 
     @POST
     @Transactional
+    @TransactionConfiguration(timeout = 10000)
     @RolesAllowed({Subscriber.ROLE_NAME})
     @Produces(MediaType.APPLICATION_JSON)
     public Response chargeSubscriber() {
