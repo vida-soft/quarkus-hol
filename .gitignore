@@ -1,2 +1,5 @@
 .vscode
 .factorypath
+.DS_Store
+.idea
+target
