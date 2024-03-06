@@ -1,0 +1,357 @@
+:imagesdir: img
+
+== Monitoring application health with Micrometer
+
+In this final chapter of our hands-on we are going to look at how we can monitor the health and well-being of our application.
+Being able to know how our application performs is crucial for maintaining its resources and address any potential issues that our application might have, based on the performance.
+
+With the Micrometer extension you are able to do exactly that, by enabling some default metrics such as CPU and RAM utilization and also being able to define your own monitoring trackers, such as timers, counters and gauges.
+Then you can export the data tools, such as https://prometheus.io/[Prometheus] and use the export file to build dashboards, charts and alerts, based on the data extracted from our metrics preferences.
+
+=== Configuring Micrometer with our Quarkus application
+
+Jus as we did with every chapter that's ever existed in this hands-on, we are going to add yet two more extensions:
+
+[source,xml]
+----
+<dependency>
+  <groupId>io.quarkus</groupId>
+  <artifactId>quarkus-micrometer</artifactId> <.>
+</dependency>
+<dependency>
+  <groupId>io.quarkus</groupId>
+  <artifactId>quarkus-micrometer-registry-prometheus</artifactId> <.>
+</dependency>
+----
+<.> Adds the core features that enable Micrometer
+<.> Adds support for Prometheus monitoring
+
+This should be enough to get things up and running.
+Now if you start your project and connect to `http://localhost:8080/q/metrics`, you should be able to see all the preloaded metrics for the application.
+These are mainly JVM, system and HTTP related metric trackers, obtained by the JVM itself or the quarkus extensions we already use and support metrics right out of the box.
+
+=== Creating custom metrics
+
+This is the part where we are going to look into making our own metric properties.
+For example if we want to track how many times the createArticle method was called, we would create a metric of type *counter*, which is going to track every call to the `createArticle` method, or we want to track how much time it takes to create a new user, then we would use a *timed* metric, that will measure the time for the method to return its value.
+And lastly if we want to check how much active pending payments are waiting to be processed, we can create a *gauge* tracker.
+
+Each of these monitoring metrics has several ways to be created within our application.
+Let's look at them one by one, and see what fits our needs.
+
+=== Counters
+
+Counters are the most basic type of metrics.
+These are simply doing what their names says.
+They count.
+
+Defining a counter metric on a method invocation will start counting each time that method has been invoked.
+Such data may help to decide what is the importance of a functionality in your code or help you see if a functionality isn't called as much and encourage you to further investigate why.
+
+In our MagMan application we can see fit for the counter function in many places, including:
+
+- Checking how many users have called the login or register endpoint
+- Checking how many articles or comments are created in real time
+- Checking if a part of our code is called to many times - such as our fallback for payments
+
+Based on this we can decide to increase our server resources to welcome more customers or check if something is wrong with our Kafka configuration and address it sooner rather than later.
+
+There are three ways to create a counter:
+
+a. With annotation - like every part of our Jakarta EE experience there's an annotation for it.
+To add a metric to a specific method to your code, you simply add the `@io.micrometer.core.annotation.Counted` annotation:
++
+[source, java]
+----
+@Override
+@Transactional
+@Counted
+public Response registerUser(NewUserDTO newUserDTO) {
+    //implementation
+}
+----
++
+Now if we go to `/q/metrics` and search for "register", we will find nothing.
+That is expected. The `/q/metrics` page shows data in real time and if we have never called the `registerUser` method at least once, there will be no data visible for it.
++
+The next step is to call `/user` endpoint and refresh the metrics page, and right away we are going to find this metric
++
+[source,text]
+----
+# TYPE method_counted_total counter
+method_counted_total{class="com.vidasoft.magman.user.UserResource",exception="none",method="registerUser",result="success",} 1.0
+----
++
+[TIP]
+====
+You can personalize your `@Counted` annotation by giving a specific name to the metric for example `@Counted("register_user_endpoint")`.
+This will create a separate dedicated counter in your Prometheus log:
+
+[source,text]
+----
+# HELP register_user_endpoint_total
+# TYPE register_user_endpoint_total counter
+register_user_endpoint_total{class="com.vidasoft.magman.user.UserResource",exception="none",method="registerUser",result="success",} 1.0
+----
+====
+
+b. Use a convenience method on the `MeterRegistry` - this is a CDI-managed class that we can inject in our resource or service and directly add a counter to it
++
+[source, java]
+----
+@RequestScoped
+public class UserResource implements UserAPI {
+
+    //other declarations
+
+    @Inject
+    MeterRegistry registry; <.>
+
+    Counter loginCounter; <.>
+
+    @PostConstruct
+    void init() {
+        String requestPath = request.uri();
+        var originIp = request.remoteAddress().toString();
+        logger.log(Level.INFO, "URL call attempt {0} from {1}", new String[]{requestPath, originIp});
+        loginCounter = registry.counter("login_user_endpoint"); <.>
+    }
+
+    @Override
+    @Transactional
+    @Counted("register_user_endpoint")
+    public Response registerUser(NewUserDTO newUserDTO) {
+        //implementation
+    }
+
+    @Override
+    public Response loginUser(LoginDTO login) {
+        loginCounter.increment(); <.>
+        Optional<User> loggedUser = userService.loginUser(login.getUserName(), login.getPassword());
+        return loggedUser
+                .map(u -> Response.ok(new UserDTO(u))
+                        .header("Authorization", jwtService.generateJWT(u))
+                        .build())
+                .orElseGet(() -> Response.status(Response.Status.UNAUTHORIZED).build());
+    }
+
+}
+
+----
+<.> First we need to inject out metric registry. (You can also get the instance form `Metrics.globalRegistry`, if you're not in a CDI managed class.)
+<.> The next step is to declare our counter.
+This strategy can be used for Timers and Gauges as well.
+<.> We have to register that counter with our registry to obtain its instance.
+<.> Finally when we need to increment it, we place the `.increment()` invocation to the point where we want to increment.
+
+c. By calling the `.builder()` method - this method, gives you more customization abilities, but at the end serves the same function:
++
+[source, java]
+----
+Counter loginCounter;
+Counter successfulLoginCounter;
+
+@PostConstruct
+void init() {
+    String requestPath = request.uri();
+    var originIp = request.remoteAddress().toString();
+    logger.log(Level.INFO, "URL call attempt {0} from {1}", new String[]{requestPath, originIp});
+    loginCounter = registry.counter("login_user_endpoint");
+    successfulLoginCounter = Counter.builder("login_user_endpoint_success")
+            .baseUnit("Schmeckle") <.>
+            .register(registry);
+}
+
+//more code
+
+@Override
+public Response loginUser(LoginDTO login) {
+    loginCounter.increment();
+    Optional<User> loggedUser = userService.loginUser(login.getUserName(), login.getPassword());
+    if (loggedUser.isPresent()) {
+        successfulLoginCounter.increment();
+        return loggedUser.map(u -> Response.ok(new UserDTO(u))
+                .header("Authorization", jwtService.generateJWT(u))
+                .build()).orElse(null);
+    } else {
+        return Response.status(Response.Status.UNAUTHORIZED).build();
+    }
+}
+----
+
+=== Timers
+
+The next custom metering tool we are going to look at is timers.
+Timers are useful when you want to track how much time it takes for an operation to complete.
+This could come in handy once your services starts getting high loads of traffic.
+It could help you to see if there are any latencies more than the expected and act accordingly by optimizing the performance of your application or addressing issues with third parties.
+
+Similarly to the counters, you have three ways to set a timer to your application.
+
+a. Using the `@io.micrometer.core.annotation.Timed` annotation - simply add this annotation on the method you want to track the execution time of:
++
+[source, java]
+----
+@Timed(value = "charge_subscriber_execution_time", description = "Tracks how much time it takes to charge a subscriber")
+public boolean chargeSubscriber(Subscriber subscriber) {
+    Subscription subscription = createSubscription(subscriber);
+    //implementation continues...
+}
+----
++
+Then on the metrics page you will be able to see some handy information about the endpoint's usage, such as the maximum time it took to perform the operation, the times this method was invoked and the total time this operation has been run.
++
+[source, text]
+----
+# HELP charge_subscriber_execution_time_seconds_max Tracks how much time it takes to charge a subscriber
+# TYPE charge_subscriber_execution_time_seconds_max gauge
+charge_subscriber_execution_time_seconds_max{class="com.vidasoft.magman.subscription.PaymentService",exception="none",method="chargeSubscriber",} 0.0061069
+# HELP charge_subscriber_execution_time_seconds Tracks how much time it takes to charge a subscriber
+# TYPE charge_subscriber_execution_time_seconds summary
+charge_subscriber_execution_time_seconds_count{class="com.vidasoft.magman.subscription.PaymentService",exception="none",method="chargeSubscriber",} 6.0
+charge_subscriber_execution_time_seconds_sum{class="com.vidasoft.magman.subscription.PaymentService",exception="none",method="chargeSubscriber",} 0.2530685
+----
+b. By invoking the registry - unlike the counters, this option is a bit different, as it requires to step things up a little, by first tracking the time and then reporting it to the registry:
++
+[source, java]
+----
+private Timer createCommentTimer;
+
+@PostConstruct
+void init() {
+    createCommentTimer = registry.timer("comments_create_comment");
+}
+
+@Override
+@Transactional
+public Response createComment(Long articleId, CommentDTO commentDTO) {
+    Timer.Sample sample = Timer.start();
+    //same old implementation...
+    sample.stop(createCommentTimer);
+
+    return Response.created(URI.create(String.format("/article/%d/comment/%d", articleId, comment.id))).build();
+}
+----
++
+It should be obvious that in order to track time in a more programmable way, we need to define where the timer starts and where it ends.
+c. Finally, if we want more control on the timer definition, we can again rely on the builder methods the `Timer` class comes with:
++
+[source, java]
+----
+@Inject
+MeterRegistry registry;
+
+private Timer createCommentTimer;
+private Timer getCommentsTimer;
+
+@PostConstruct
+void init() {
+    createCommentTimer = registry.timer("comments_create_comment");
+    getCommentsTimer = Timer.builder("comments_get_timer")
+            .tag("comments_resource", "get_comments")
+            .register(registry);
+}
+
+@Override
+@Transactional
+public Response createComment(Long articleId, CommentDTO commentDTO) {
+    Timer.Sample sample = Timer.start();
+    //implementation...
+    sample.stop(createCommentTimer);
+
+    return Response.created(URI.create(String.format("/article/%d/comment/%d", articleId, comment.id))).build();
+}
+
+@Override
+public List<CommentDTO> getCommentsForArticle(Long articleId) {
+    return getCommentsTimer.record(() -> Comment.findByArticleId(articleId)
+            .stream().map(CommentDTO::new).toList());
+}
+----
+
+TIP: Notice that there are different ways to start a timer.
+We can either get a class what has a `start()` and `stop()` method or wrap the content we want to track time of in a lambda function.
+The decision on which one to use, lies on how complicated the task is. You can find more about the different ways to run timers https://quarkus.io/guides/telemetry-micrometer#measure-durations-with-timers[here].
+
+=== Gauges
+
+The final metering tool we are going to look at is the gauge.
+Gauges are convenient metering values that show us current state of something that could increase or decrease.
+For example the amount of RAM usage of your computer could be gauged or the usage of the CPU.
+Values like this help you make the decision whether to close an application to clear up more space or find what's bottlenecking the performance of your machine.
+
+In our application a smart place to put a gauge would be to track the number of pending transactions.
+Then, if that number goes above a certain threshold, we can use it to trigger an alert that will tell us that there is something wrong with the payment processing services.
+
+Unlike the counters and the timers, the gauge doesn't have its own annotation, as it doesn't need to be triggered upon a method call, because it has more specific uses that require different approach in creating and reporting information to them.
+There are two ways to use a gauge:
+
+a. actively - this requires a convenient place to create your gauge and bind a function to it, which it will call every time the `/metrics` page is opened:
++
+[source, java]
+----
+public class PaymentService {
+
+    private static final Logger LOGGER = Logger.getLogger(PaymentService.class.getName());
+
+    @Inject
+    EventBus eventBus;
+
+    @Inject
+    KafkaMessageService kafkaMessageService;
+
+    @Inject
+    MeterRegistry registry;
+
+    public void buildPendingTransactionsGauge(@Observes StartupEvent startupEvent) {
+        Gauge.builder("subscriptions_pending", Subscription::countPendingSubscriptions).register(registry); <.>
+    }
+
+    //further implementations
+}
+----
+<.> We assume that we have already defined a method to obtain all pending subscriptions.
+b. passively - instead of doing a call which might involve dedicating the time and resources of our environment, the gauge can cling onto a method that is called often enough and steal the data from there:
++
+[source, java]
+----
+@ApplicationScoped
+public class KafkaMessageService {
+    private static final Logger LOGGER = Logger.getLogger(KafkaMessageService.class.getName());
+
+    private Set<PaymentPayload> pendingMessages = ConcurrentHashMap.newKeySet(); //We are adding entries from different threads, so we need a set that could support it
+    //more imports and methods here...
+
+    @Retry
+    @Timeout(5000)
+    @Fallback(fallbackMethod = "chargeSubscriberThroughRest")
+    @CircuitBreaker(requestVolumeThreshold = 3)
+    @Asynchronous
+    public CompletionStage<Void> sendPaymentsMessage(PaymentPayload payload) {
+        pendingMessages.add(payload);
+        registry.gaugeCollectionSize("payments_to_send", List.of(Tag.of("Tag1", "Tag1")), pendingMessages); <.>
+        LOGGER.info("Attempting to send payment message");
+        String payloadString = JsonbBuilder.create().toJson(payload);
+        paymentsEmitter.send(payloadString).toCompletableFuture().join();
+        LOGGER.info("Successfully emitted message to payments topic: %s".formatted(payloadString));
+
+        registry.gaugeCollectionSize("payments_to_send", List.of(Tag.of("Tag1", "Tag1")), pendingMessages); <.>
+        pendingMessages.remove(payload);
+        return CompletableFuture.completedFuture(null);
+    }
+}
+----
+<.> Creating the gauge entry for the first time with the registry requires to add its initial or current value
+<.> We can then update that entry as we need to.
++
+In this scenario we are waiting for `paymentsEmitter.send` to complete its operation.
+Since `sendPaymentsMessage` is not synchronized, it can be called as many times as the resources of the application allow.
+This is a convenient point where we can keep track on the current amount of messages that are waiting to be sent.
+Now think of the real world scenario - being able to tell that something is wrong with the messaging service,
+before too many messages add up, and act upon it.
+
+=== Compatibility with MP Metrics
+
+Formally Quarkus used to work with the MicroProfile Metrics specification.
+If you choose to use the annotations from MP Metrics you are free to do so, as long as you configure the appropriate dependencies.
+You can find out more on how to use MP Metrics annotations with Micrometer on Quarkus https://quarkus.io/guides/telemetry-micrometer#support-for-the-microprofile-metrics-api[here].
